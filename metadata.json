@@ -1,0 +1,8 @@
+{
+  "name": "新达小学教务系统",
+  "description": "专业的小学教师教务管理平台，支持多学科作业批改、试卷分析及AI智能辅导方案生成。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

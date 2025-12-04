@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>新达小学教务系统 - 教师端</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Polyfill for process.env
+      window.process = window.process || { env: { API_KEY: '' } };
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+      
+      :root {
+        --glass-bg: rgba(255, 255, 255, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.5);
+      }
+
+      body {
+        font-family: 'Noto Sans SC', sans-serif;
+        background-color: #f0f2f5;
+        overflow-x: hidden;
+      }
+
+      /* 3D Moving Gradient Background */
+      .mesh-bg {
+        background-color: #e0e5ec;
+        background-image: 
+          radial-gradient(at 40% 20%, hsla(250,100%,94%,1) 0px, transparent 50%),
+          radial-gradient(at 80% 0%, hsla(189,100%,96%,1) 0px, transparent 50%),
+          radial-gradient(at 0% 50%, hsla(341,100%,96%,1) 0px, transparent 50%),
+          radial-gradient(at 80% 50%, hsla(250,100%,96%,1) 0px, transparent 50%),
+          radial-gradient(at 0% 100%, hsla(220,100%,96%,1) 0px, transparent 50%),
+          radial-gradient(at 80% 100%, hsla(240,100%,94%,1) 0px, transparent 50%),
+          radial-gradient(at 0% 0%, hsla(343,100%,96%,1) 0px, transparent 50%);
+        background-size: 200% 200%;
+        animation: meshMove 15s ease infinite;
+      }
+
+      @keyframes meshMove {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      /* Advanced Glassmorphism */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+      }
+
+      .glass-card-hover {
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .glass-card-hover:hover {
+        transform: translateY(-5px) scale(1.01);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+        border-color: rgba(255, 255, 255, 0.9);
+      }
+
+      /* Animations */
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 6s ease-in-out infinite;
+      }
+
+      @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(156, 163, 175, 0.5);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(107, 114, 128, 0.8);
+      }
+
+      .stagger-1 { animation-delay: 100ms; }
+      .stagger-2 { animation-delay: 200ms; }
+      .stagger-3 { animation-delay: 300ms; }
+      .stagger-4 { animation-delay: 400ms; }
+      .stagger-5 { animation-delay: 500ms; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react": "https://esm.sh/react@19.0.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+  }
+}
+</script>
+</head>
+  <body class="mesh-bg min-h-screen text-slate-800">
+    <div id="root"></div>
+  </body>
+</html>
