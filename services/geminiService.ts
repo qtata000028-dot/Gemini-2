@@ -3,9 +3,7 @@ import { Subject, LessonPlan } from "../types";
 
 // Helper to get lazy initialized client
 const getAiClient = () => {
-  // Ensure we don't crash if env is missing, though polyfill handles it.
-  const apiKey = process.env.API_KEY || ''; 
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 export const generateGradingSuggestion = async (

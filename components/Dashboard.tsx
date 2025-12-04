@@ -15,20 +15,21 @@ interface DashboardProps {
   onUpdateTeacher?: (updates: Partial<Teacher>) => void;
 }
 
-// --- Smooth Curve Chart (Fix Deformed Lines) ---
+// --- FIX: Smooth Curve Chart with Perfect Circles ---
+// SVG handles the scalable line, HTML Absolute Positioning handles the dots to prevent deformation
 const SmoothLineChart = ({ data }: { data: any[] }) => {
     const scores = data.map(d => d.averageScore || d.score);
     const max = 100;
     const min = 60;
     
-    // Calculate points coordinates
+    // Calculate points coordinates (0-100 scale)
     const points = scores.map((score, i) => {
         const x = (i / (scores.length - 1)) * 100;
         const y = 100 - ((score - min) / (max - min)) * 100;
         return { x, y };
     });
 
-    // Generate Catmull-Rom like smooth path
+    // Generate Catmull-Rom like smooth path for SVG
     const getPath = (points: {x: number, y: number}[]) => {
         if (points.length === 0) return "";
         
@@ -52,11 +53,10 @@ const SmoothLineChart = ({ data }: { data: any[] }) => {
     };
 
     const pathD = getPath(points);
-    // Area fill path
     const areaD = `${pathD} L 100 100 L 0 100 Z`;
 
     return (
-        <div className="w-full h-full relative flex flex-col justify-end overflow-hidden rounded-2xl">
+        <div className="w-full h-full relative flex flex-col justify-end overflow-hidden rounded-2xl select-none group">
              {/* Grid Lines */}
              <div className="absolute inset-0 flex flex-col justify-between py-4 pointer-events-none opacity-20 z-0">
                  {[100, 90, 80, 70, 60].map(val => (
@@ -66,50 +66,58 @@ const SmoothLineChart = ({ data }: { data: any[] }) => {
                  ))}
              </div>
              
-             <svg className="w-full h-full overflow-visible z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#3b82f6" />
-                        <stop offset="100%" stopColor="#8b5cf6" />
-                    </linearGradient>
-                    <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2"/>
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
-                    </linearGradient>
-                    <filter id="glow">
-                        <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
-                        <feMerge>
-                            <feMergeNode in="coloredBlur"/>
-                            <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                    </filter>
-                </defs>
-                
-                {/* Area Fill */}
-                <path d={areaD} fill="url(#areaGradient)" />
+             {/* The Scalable Line Layer */}
+             <div className="absolute inset-0 z-10">
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#3b82f6" />
+                            <stop offset="100%" stopColor="#8b5cf6" />
+                        </linearGradient>
+                        <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3"/>
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0"/>
+                        </linearGradient>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+                            <feMerge>
+                                <feMergeNode in="coloredBlur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                        </filter>
+                    </defs>
+                    <path d={areaD} fill="url(#areaGradient)" />
+                    <path 
+                        d={pathD} 
+                        fill="none" 
+                        stroke="url(#lineGradient)" 
+                        strokeWidth="1.5" 
+                        vectorEffect="non-scaling-stroke"
+                        filter="url(#glow)"
+                        className="drop-shadow-lg"
+                    />
+                </svg>
+             </div>
 
-                {/* Line */}
-                <path 
-                    d={pathD} 
-                    fill="none" 
-                    stroke="url(#lineGradient)" 
-                    strokeWidth="1.5" 
-                    vectorEffect="non-scaling-stroke"
-                    filter="url(#glow)"
-                    className="drop-shadow-lg"
-                />
-
-                {/* Points */}
+             {/* The Fixed Data Points Layer (HTML to prevent circle distortion) */}
+             <div className="absolute inset-0 z-20 pointer-events-none">
                  {points.map((p, i) => (
-                    <g key={i}>
-                        <circle cx={p.x} cy={p.y} r="1.5" fill="white" stroke="#3b82f6" strokeWidth="0.5" vectorEffect="non-scaling-stroke" className="hover:r-3 transition-all" />
-                        <text x={p.x} y={p.y - 5} fontSize="3" textAnchor="middle" fill="#475569" fontWeight="bold" className="opacity-0 hover:opacity-100 transition-opacity select-none">{scores[i]}</text>
-                    </g>
+                    <div 
+                        key={i}
+                        className="absolute w-3 h-3 bg-white border-2 border-blue-500 rounded-full shadow-md transition-all duration-300 transform -translate-x-1/2 -translate-y-1/2 hover:scale-150 hover:bg-blue-600 cursor-pointer pointer-events-auto group-hover:border-blue-400"
+                        style={{ left: `${p.x}%`, top: `${p.y}%` }}
+                    >
+                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30">
+                             {scores[i]}分
+                         </div>
+                    </div>
                  ))}
-             </svg>
-             <div className="flex justify-between mt-2 text-xs text-slate-400 font-bold px-1">
+             </div>
+
+             {/* X Axis Labels */}
+             <div className="flex justify-between mt-auto mb-1 text-[10px] text-slate-400 font-bold px-1 relative z-30">
                  {data.map((d, i) => (
-                     <span key={i}>{d.date ? d.date.split('-').slice(1).join('/') : d.name || `T${i+1}`}</span>
+                     <span key={i} className="text-center w-10 truncate">{d.date ? d.date.split('-').slice(1).join('/') : d.name || `T${i+1}`}</span>
                  ))}
              </div>
         </div>
@@ -246,7 +254,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
       }}
       className={`group w-full flex items-center space-x-3 px-6 py-4 transition-all duration-300 rounded-2xl mb-2 relative overflow-hidden ${
         currentView === view 
-          ? 'text-white shadow-xl shadow-blue-500/20' 
+          ? 'text-white shadow-xl shadow-blue-500/30' 
           : 'text-slate-500 hover:bg-white/50 hover:text-blue-600'
       }`}
     >
@@ -269,15 +277,15 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
               <div className="stagger-1 animate-in fade-in slide-in-from-bottom-4">
                 <h2 className="text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                  Hello, {teacher.name} <span className="text-2xl animate-bounce">👋</span>
+                  Hello, {teacher.name} <span className="text-3xl animate-bounce">👋</span>
                 </h2>
                 <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
                   系统运行正常 · {teacher.subject}教研组
                 </p>
               </div>
               <div className="flex gap-4 stagger-2 animate-in fade-in slide-in-from-bottom-4">
-                 <button className="glass-panel p-3 rounded-2xl text-slate-600 hover:text-blue-600 transition-colors relative">
+                 <button className="glass-panel p-3 rounded-2xl text-slate-600 hover:text-blue-600 transition-colors relative hover:scale-110 active:scale-95 duration-200">
                     <Bell className="w-6 h-6" />
                     <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
                  </button>
