@@ -6,6 +6,29 @@ import * as XLSX from 'xlsx';
 export type UploadProgressCallback = (status: 'compressing' | 'uploading', percent: number, loaded: number, total: number) => void;
 
 export const dataService = {
+  // --- SYSTEM CONFIG (New) ---
+  
+  async fetchSystemConfig(keyName: string): Promise<string | null> {
+    try {
+      // 尝试从 system_config 表获取配置
+      // SQL Table required: create table system_config (key text primary key, value text);
+      const { data, error } = await supabase
+        .from('system_config')
+        .select('value')
+        .eq('key', keyName)
+        .maybeSingle();
+      
+      if (error) {
+          console.warn(`Config fetch error for ${keyName}:`, error.message);
+          return null;
+      }
+      return data?.value || null;
+    } catch (e) {
+      console.error("System Config Error:", e);
+      return null;
+    }
+  },
+
   // --- CUSTOM TEACHER AUTH (No Supabase Auth) ---
 
   async teacherLogin(username: string, password: string): Promise<Teacher> {

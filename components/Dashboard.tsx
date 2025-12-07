@@ -9,7 +9,7 @@ import {
   Loader2, Sparkles, CheckCircle, Clock, ChevronRight, ChevronDown,
   FileText, CloudUpload, Image as ImageIcon, X, CheckSquare, Search, Camera,
   FileSpreadsheet, ArrowDownCircle, AlertCircle, Book, FileCheck, Play, Download, BrainCircuit,
-  Palette, Wand2
+  Palette, Wand2, Settings, Key, Database
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PptxGenJS from 'pptxgenjs';
@@ -228,6 +228,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             // Load textbooks
             const tb = await dataService.fetchTextbooks(teacher.id);
             setTextbooks(tb);
+            
         } catch (error) {
             console.error("Failed load", error);
         } finally {
@@ -349,14 +350,18 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     setGradingLoading(true);
     const student = students.find(s => s.id === hw.studentId);
     if (!student) { setGradingLoading(false); return; }
+    
     const result = await generateGradingSuggestion(teacher.subject, student.name, hw.content);
     
-    setTimeout(async () => {
-        const updatedHw = { ...hw, status: 'graded' as const, score: result.score, feedback: result.feedback, aiAnalysis: "AI 自动批改完成" };
-        setHomeworkList(prev => prev.map(h => h.id === hw.id ? updatedHw : h));
-        setGradingLoading(false);
-        await dataService.updateHomework(hw.id, updatedHw);
-    }, 1500);
+    // Check if result indicates error
+    if (result.score === 0 && result.feedback.includes("配置")) {
+        alert(result.feedback); // Show error to user
+    }
+
+    const updatedHw = { ...hw, status: 'graded' as const, score: result.score, feedback: result.feedback, aiAnalysis: "AI 自动批改完成" };
+    setHomeworkList(prev => prev.map(h => h.id === hw.id ? updatedHw : h));
+    setGradingLoading(false);
+    await dataService.updateHomework(hw.id, updatedHw);
   };
 
   const handleAnalysis = async () => {
@@ -375,50 +380,55 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     setSlides([]);
     setQuiz([]);
     const context = textbooks.find(t => t.id === selectedTextbookId)?.title;
-    const plan = await generateLessonPlan(lessonTopic, teacher.subject, context);
-    setLessonPlan(plan);
-    setLessonLoading(false);
-    if (plan) await dataService.createLessonPlan(teacher.id, plan);
+    try {
+        const plan = await generateLessonPlan(lessonTopic, teacher.subject, context);
+        if (plan) {
+            setLessonPlan(plan);
+            await dataService.createLessonPlan(teacher.id, plan);
+        } else {
+            alert("生成失败，请稍后重试。");
+        }
+    } catch (e: any) {
+        alert("生成出错: " + e.message);
+    } finally {
+        setLessonLoading(false);
+    }
   };
 
   const handleGenerateSlides = async () => {
     if (!lessonPlan) return;
     setGeneratingSlides(true);
-    // 1. Generate Text Structure
-    const generatedSlides = await generatePPTSlides(lessonPlan.topic, lessonPlan.objectives, teacher.subject);
-    setSlides(generatedSlides);
-    setGeneratingSlides(false);
-    setShowSlidePreview(true);
-
-    // 2. Trigger Image Generation in Background
-    handleGenerateImages(generatedSlides);
+    try {
+        const generatedSlides = await generatePPTSlides(lessonPlan.topic, lessonPlan.objectives, teacher.subject);
+        setSlides(generatedSlides);
+        if(generatedSlides.length > 0) {
+            setShowSlidePreview(true);
+            handleGenerateImages(generatedSlides);
+        } else {
+             alert("PPT 大纲生成失败。");
+        }
+    } catch(e) {
+        console.error(e);
+    } finally {
+        setGeneratingSlides(false);
+    }
   };
 
   const handleGenerateImages = async (currentSlides: PresentationSlide[]) => {
       if (currentSlides.length === 0) return;
       setGeneratingImages(true);
       setImageGenProgress(0);
-
-      // We will generate:
-      // 1. One "Cover" image for the title slide.
-      // 2. One "Theme" image for the content slides to maintain consistency and speed.
-      // 3. (Optional) Images for each slide if possible, but let's stick to Title + Theme + maybe 2 key slides to be fast.
-      // Strategy: Generate image for Title (Index 0) and a generic one for Index 1 (and reuse).
       
       const newSlides = [...currentSlides];
       const totalToGen = newSlides.length;
-
-      // Parallel Limit: Generate for all slides but sequence carefully or map.
-      // To provide "High Level" experience, we want each slide to have a background.
       
       for (let i = 0; i < newSlides.length; i++) {
           const prompt = newSlides[i].visualPrompt || `${lessonPlan?.topic} educational abstract background`;
-          // Use the real banana model (gemini-2.5-flash-image)
           const base64Image = await generateEducationalImage(prompt);
           if (base64Image) {
               newSlides[i].backgroundImage = base64Image;
           }
-          setSlides([...newSlides]); // Update state to trigger re-render
+          setSlides([...newSlides]); 
           setImageGenProgress(Math.round(((i + 1) / totalToGen) * 100));
       }
 
@@ -430,106 +440,40 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     try {
         const pres = new PptxGenJS();
         pres.layout = 'LAYOUT_16x9';
-        
-        // Define Theme Colors based on subject
         const themeColor = teacher.subject === Subject.MATH ? '2563EB' 
                        : teacher.subject === Subject.CHINESE ? 'DC2626' 
                        : '9333EA';
 
-        // Helper to add background
         const addBackground = (slide: PptxGenJS.Slide, imgData?: string) => {
             if (imgData) {
-                // Full screen background image
                 slide.addImage({ data: imgData, x: 0, y: 0, w: '100%', h: '100%' });
-                // Add a glassmorphism overlay to ensure text readability
-                slide.addShape(pres.ShapeType.rect, { 
-                    x: 0, y: 0, w: '100%', h: '100%', 
-                    fill: { color: 'FFFFFF', transparency: 15 } // Light overlay
-                });
+                slide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: 'FFFFFF', transparency: 15 } });
             } else {
-                 // Fallback gradient
                  slide.background = { color: 'F1F5F9' };
             }
         };
 
-        // Generate Slides
         for (let i = 0; i < slides.length; i++) {
             const s = slides[i];
             const slide = pres.addSlide();
-
-            // 1. Add Background (AI Generated)
             addBackground(slide, s.backgroundImage);
 
-            // 2. Add Content based on Layout
             if (s.layout === 'TITLE') {
-                // Frosted Glass Card for Title
-                slide.addShape(pres.ShapeType.rect, {
-                    x: 1.5, y: 2, w: 7, h: 3.5,
-                    fill: { color: 'FFFFFF', transparency: 20 },
-                    rectRadius: 0.5,
-                    shadow: { type: 'outer', color: '000000', blur: 10, offset: 5, opacity: 0.3 }
-                });
-
-                slide.addText(s.title, { 
-                    x: 1.5, y: 2.5, w: 7, h: 1.5, 
-                    fontSize: 44, bold: true, color: '1E293B', align: 'center', fontFace: 'Arial' 
-                });
-                
-                slide.addText(`主讲人：${teacher.name}`, {
-                    x: 1.5, y: 4, w: 7, h: 0.5,
-                    fontSize: 20, color: '334155', align: 'center'
-                });
-
+                slide.addShape(pres.ShapeType.rect, { x: 1.5, y: 2, w: 7, h: 3.5, fill: { color: 'FFFFFF', transparency: 20 }, rectRadius: 0.5, shadow: { type: 'outer', color: '000000', blur: 10, offset: 5, opacity: 0.3 } });
+                slide.addText(s.title, { x: 1.5, y: 2.5, w: 7, h: 1.5, fontSize: 44, bold: true, color: '1E293B', align: 'center', fontFace: 'Arial' });
+                slide.addText(`主讲人：${teacher.name}`, { x: 1.5, y: 4, w: 7, h: 0.5, fontSize: 20, color: '334155', align: 'center' });
             } else {
-                // Content Slide Layout
-                
-                // Header Bar (Glass style)
-                slide.addShape(pres.ShapeType.rect, {
-                    x: 0.5, y: 0.3, w: 9, h: 1,
-                    fill: { color: 'FFFFFF', transparency: 10 },
-                    rectRadius: 0.2
-                });
-
-                slide.addText(s.title, { 
-                    x: 0.7, y: 0.3, w: 8, h: 1, 
-                    fontSize: 32, bold: true, color: themeColor, fontFace: 'Arial' 
-                });
-
-                // Content Box (Left)
-                slide.addShape(pres.ShapeType.rect, {
-                    x: 0.5, y: 1.5, w: 5.5, h: 5,
-                    fill: { color: 'FFFFFF', transparency: 15 },
-                    rectRadius: 0.2
-                });
-
-                // Bullets
+                slide.addShape(pres.ShapeType.rect, { x: 0.5, y: 0.3, w: 9, h: 1, fill: { color: 'FFFFFF', transparency: 10 }, rectRadius: 0.2 });
+                slide.addText(s.title, { x: 0.7, y: 0.3, w: 8, h: 1, fontSize: 32, bold: true, color: themeColor, fontFace: 'Arial' });
+                slide.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.5, w: 5.5, h: 5, fill: { color: 'FFFFFF', transparency: 15 }, rectRadius: 0.2 });
                 const contentText = s.content.map(c => ({ text: c, options: { breakLine: true, bullet: { code: '2022' } } }));
-                slide.addText(contentText, {
-                    x: 0.7, y: 1.7, w: 5, h: 4.5,
-                    fontSize: 20, color: '0F172A', fontFace: 'Arial', lineSpacing: 32, bold: true
-                });
-                
-                // Right side Decorative Box (if image didn't load, or just to balance layout)
-                // If we have a background image, we don't need a separate image on the right, 
-                // but let's add a translucent shape to look "High Tech"
-                slide.addShape(pres.ShapeType.rect, {
-                    x: 6.2, y: 1.5, w: 3.3, h: 5,
-                    fill: { color: themeColor, transparency: 85 },
-                    line: { color: themeColor, width: 2 },
-                    rectRadius: 0.2
-                });
-                
-                slide.addText("Knowledge Point", {
-                    x: 6.2, y: 3.5, w: 3.3, h: 1,
-                    align: 'center', color: themeColor, fontSize: 14, rotate: -45, transparency: 50
-                });
+                slide.addText(contentText, { x: 0.7, y: 1.7, w: 5, h: 4.5, fontSize: 20, color: '0F172A', fontFace: 'Arial', lineSpacing: 32, bold: true });
+                slide.addShape(pres.ShapeType.rect, { x: 6.2, y: 1.5, w: 3.3, h: 5, fill: { color: themeColor, transparency: 85 }, line: { color: themeColor, width: 2 }, rectRadius: 0.2 });
+                slide.addText("Knowledge Point", { x: 6.2, y: 3.5, w: 3.3, h: 1, align: 'center', color: themeColor, fontSize: 14, rotate: -45, transparency: 50 });
             }
-
-            // Footer / Slide Number
             slide.addText(`${i + 1}`, { x: 9.2, y: 7.2, w: 0.5, h: 0.3, fontSize: 10, color: '64748B' });
             if (s.notes) slide.addNotes(s.notes);
         }
-
         pres.writeFile({ fileName: `${lessonPlan?.topic || 'Smart_Lesson'}_${teacher.name}.pptx` });
     } catch (e) {
         console.error("PPT Gen Error", e);
@@ -540,9 +484,18 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   const handleGenerateQuiz = async () => {
     if (!lessonPlan) return;
     setGeneratingQuiz(true);
-    const generatedQuiz = await generateQuiz(lessonPlan.topic, lessonPlan.keyPoints);
-    setQuiz(generatedQuiz);
-    setGeneratingQuiz(false);
+    try {
+        const generatedQuiz = await generateQuiz(lessonPlan.topic, lessonPlan.keyPoints);
+        if(generatedQuiz.length > 0) {
+            setQuiz(generatedQuiz);
+        } else {
+            alert("习题生成失败，请稍后重试。");
+        }
+    } catch(e) {
+        console.error(e);
+    } finally {
+        setGeneratingQuiz(false);
+    }
   };
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -612,7 +565,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-white/5">
+        <div className="mt-auto p-6 border-t border-white/5 space-y-2">
            <button onClick={onLogout} className="flex items-center space-x-3 text-slate-500 hover:text-red-400 transition-colors w-full px-4 py-3 rounded-xl hover:bg-red-500/5 group">
              <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
              <span className="font-bold">退出系统</span>
@@ -1106,43 +1059,52 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                             </div>
                                         </div>
                                         {/* Right Decorative Area */}
-                                        <div className="w-1/4 h-full flex flex-col justify-center items-center opacity-50">
-                                            <div className="w-full h-full border-2 border-white/50 rounded-2xl"></div>
+                                        <div className="w-1/4 h-full flex flex-col justify-center gap-4">
+                                            {slides[currentSlideIndex].layout === 'TWO_COLUMN' && (
+                                               <div className="bg-blue-600/10 backdrop-blur-sm p-6 rounded-2xl border border-blue-600/20 h-full flex items-center justify-center text-blue-800 font-bold text-center">
+                                                  Visual Area
+                                               </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
-                                
-                                {/* Footer */}
-                                <div className="absolute bottom-6 left-8 text-slate-400 text-xs font-bold tracking-widest uppercase">AI Smart Courseware • {teacher.subject}</div>
-                                <div className="absolute bottom-6 right-8 text-slate-400 text-lg font-black font-mono">0{currentSlideIndex + 1}</div>
+                            </div>
+
+                            {/* Slide Number */}
+                            <div className="absolute bottom-4 right-6 text-slate-400 font-bold text-lg z-20">
+                                {currentSlideIndex + 1} / {slides.length}
                             </div>
                        </div>
                   </div>
 
-                  <div className="p-6 bg-white/5 border-t border-white/10 flex justify-between items-center">
-                      <div className="flex gap-2">
-                          <button onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))} disabled={currentSlideIndex === 0} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><ChevronDown className="w-5 h-5 rotate-90"/></button>
-                          <span className="text-slate-400 font-bold px-4 flex items-center">{currentSlideIndex + 1} / {slides.length}</span>
-                          <button onClick={() => setCurrentSlideIndex(Math.min(slides.length - 1, currentSlideIndex + 1))} disabled={currentSlideIndex === slides.length - 1} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><ChevronDown className="w-5 h-5 -rotate-90"/></button>
-                      </div>
-                      <div className="flex gap-4 items-center">
-                          <p className="text-xs text-slate-500 italic max-w-md truncate hidden md:block opacity-50">
-                              Visual Prompt: {slides[currentSlideIndex].visualPrompt}
-                          </p>
+                  <div className="p-6 border-t border-white/10 bg-white/5 flex justify-between items-center backdrop-blur-md">
+                      <div className="flex gap-4">
                           <button 
-                            onClick={handleDownloadPPT}
-                            disabled={generatingImages}
-                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/40 transition-all active:scale-95 hover:shadow-blue-900/60 disabled:opacity-50 disabled:cursor-wait"
+                            onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))}
+                            disabled={currentSlideIndex === 0}
+                            className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold flex items-center gap-2 disabled:opacity-30 transition-all text-white"
                           >
-                              {generatingImages ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                              {generatingImages ? '正在生成资源...' : '导出 PPTX'}
+                             Prev
+                          </button>
+                          <button 
+                            onClick={() => setCurrentSlideIndex(Math.min(slides.length - 1, currentSlideIndex + 1))}
+                            disabled={currentSlideIndex === slides.length - 1}
+                            className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold flex items-center gap-2 disabled:opacity-30 transition-all text-white"
+                          >
+                             Next
                           </button>
                       </div>
+
+                      <button 
+                        onClick={handleDownloadPPT}
+                        className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg hover:shadow-blue-500/30 text-white rounded-xl font-black flex items-center gap-2 transition-all transform hover:scale-105"
+                      >
+                         <Download className="w-5 h-5" /> 导出 PPTX 文件
+                      </button>
                   </div>
               </div>
           </div>
       )}
-
     </div>
   );
 };

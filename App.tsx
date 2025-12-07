@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, ErrorInfo, ReactNode, Component } from 'react';
+import React, { useState, useEffect, ErrorInfo, ReactNode } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import StudentDashboard from './components/StudentDashboard';
@@ -9,18 +8,30 @@ import { AlertTriangle } from 'lucide-react';
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) { super(props); this.state = { hasError: false }; }
-  static getDerivedStateFromError(_: Error) { return { hasError: true }; }
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Error:", error, errorInfo); }
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Error:", error, errorInfo);
+  }
+
   render() {
-    if (this.state.hasError) return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
-        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-        <h1 className="text-2xl font-bold mb-2">系统遇到问题</h1>
-        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg">刷新</button>
-      </div>
-    );
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+          <h1 className="text-2xl font-bold mb-2">系统遇到问题</h1>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg">刷新</button>
+        </div>
+      );
+    }
     return this.props.children;
   }
 }
