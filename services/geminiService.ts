@@ -2,9 +2,31 @@
 import { GoogleGenAI } from "@google/genai";
 import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
 
+// Helper to robustly get API Key in various environments (Vercel, Local, etc.)
+const getApiKey = (): string => {
+  // 1. Try standard process.env (Node/Webpack)
+  if (typeof process !== 'undefined' && process.env?.API_KEY) {
+    return process.env.API_KEY;
+  }
+  
+  // 2. Try window.process (Our Polyfill in index.html)
+  if (typeof window !== 'undefined' && (window as any).process?.env?.API_KEY) {
+    return (window as any).process.env.API_KEY;
+  }
+
+  // 3. Fallback: Hardcoded Key (User provided)
+  // 注意：在正式生产环境中，建议通过后端转发或 Vercel Rewrites 隐藏 Key，
+  // 但为了目前项目能直接跑通，这里作为最后一道防线。
+  return 'AIzaSyBWoddFIDsKvjIuzC_Wu1dRW9O-lqqW7js';
+};
+
 // Helper to get lazy initialized client
 const getAiClient = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.error("CRITICAL: API Key is missing. AI features will fail.");
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 export const generateGradingSuggestion = async (
@@ -86,9 +108,12 @@ export const generateStudentAnalysis = async (
       contents: prompt,
     });
     return response.text || "暂无足够数据生成详细分析。";
-  } catch (error) {
-    console.error("Gemini Analysis Error:", error);
-    return "系统繁忙，请稍后重试分析。";
+  } catch (error: any) {
+    console.error("Gemini Analysis Error Full Detail:", error);
+    // Return a more descriptive error if possible
+    if (error.message?.includes('429')) return "AI 服务调用太频繁，请稍后重试。";
+    if (error.message?.includes('401') || error.message?.includes('API key')) return "API Key 配置有误，请检查。";
+    return "系统连接 AI 服务超时，请刷新重试。";
   }
 };
 
@@ -165,7 +190,7 @@ export const generateEducationalImage = async (prompt: string): Promise<string |
       model: modelId,
       contents: {
         parts: [
-          { text: prompt + " high quality, educational illustration, 4k resolution, clean style, no text" }
+          { text: prompt + " high quality, educational illustration, 4k resolution, clean style, no text, vivid colors, photorealistic or high-end 3d render" }
         ]
       }
     });
