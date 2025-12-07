@@ -1,100 +1,95 @@
+
 import React, { useState, useEffect, ErrorInfo, ReactNode, Component } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import { Teacher } from './types';
-import { TEACHERS } from './constants';
+import StudentDashboard from './components/StudentDashboard';
+import { Teacher, Student, UserRole } from './types';
 import { AlertTriangle } from 'lucide-react';
 
-interface ErrorBoundaryProps {
-  children?: ReactNode;
-}
+interface ErrorBoundaryProps { children?: ReactNode; }
+interface ErrorBoundaryState { hasError: boolean; }
 
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-// Error Boundary to prevent white screen crashes
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
-  }
-
+  constructor(props: ErrorBoundaryProps) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError(_: Error) { return { hasError: true }; }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Error:", error, errorInfo); }
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-800 p-8 text-center">
-          <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-          <h1 className="text-2xl font-bold mb-2">系统遇到了一点小问题</h1>
-          <p className="text-slate-500 mb-4">请尝试刷新页面</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors"
-          >
-            刷新页面
-          </button>
-        </div>
-      );
-    }
+    if (this.state.hasError) return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h1 className="text-2xl font-bold mb-2">系统遇到问题</h1>
+        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg">刷新</button>
+      </div>
+    );
     return this.props.children;
   }
 }
 
 const App: React.FC = () => {
-  // Load teachers from localStorage or use default
-  const [teachers, setTeachers] = useState<Teacher[]>(() => {
-    try {
-      const saved = localStorage.getItem('smart_edu_teachers');
-      return saved ? JSON.parse(saved) : TEACHERS;
-    } catch (e) {
-      return TEACHERS;
-    }
-  });
-
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [currentTeacher, setCurrentTeacher] = useState<Teacher | null>(null);
+  const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
 
-  // Persist changes whenever teachers list updates
   useEffect(() => {
-    localStorage.setItem('smart_edu_teachers', JSON.stringify(teachers));
-  }, [teachers]);
+    // Check LocalStorage for persistent session
+    const storedTeacher = localStorage.getItem('teacher_session');
+    const storedStudent = localStorage.getItem('student_session');
 
-  const handleLogin = (teacher: Teacher) => {
-    setCurrentTeacher(teacher);
+    if (storedTeacher) {
+      setCurrentTeacher(JSON.parse(storedTeacher));
+      setUserRole('teacher');
+    } else if (storedStudent) {
+      setCurrentStudent(JSON.parse(storedStudent));
+      setUserRole('student');
+    }
+  }, []);
+
+  const handleTeacherLogin = (teacher: Teacher) => {
+     setCurrentTeacher(teacher);
+     setUserRole('teacher');
+     localStorage.setItem('teacher_session', JSON.stringify(teacher));
+     localStorage.removeItem('student_session');
+  };
+  
+  const handleUpdateTeacher = (updates: Partial<Teacher>) => {
+      if (!currentTeacher) return;
+      const updated = { ...currentTeacher, ...updates };
+      setCurrentTeacher(updated);
+      localStorage.setItem('teacher_session', JSON.stringify(updated));
+  };
+
+  const handleStudentLogin = (student: Student) => {
+     setCurrentStudent(student);
+     setUserRole('student');
+     localStorage.setItem('student_session', JSON.stringify(student));
+     localStorage.removeItem('teacher_session');
   };
 
   const handleLogout = () => {
     setCurrentTeacher(null);
-  };
-
-  const handleUpdateTeacher = (updates: Partial<Teacher>) => {
-    if (currentTeacher) {
-      const updatedTeacher = { ...currentTeacher, ...updates };
-      setCurrentTeacher(updatedTeacher);
-      
-      // Update the master list so persistence works
-      setTeachers(prev => prev.map(t => t.id === updatedTeacher.id ? updatedTeacher : t));
-    }
+    setCurrentStudent(null);
+    setUserRole(null);
+    localStorage.removeItem('teacher_session');
+    localStorage.removeItem('student_session');
   };
 
   return (
     <ErrorBoundary>
-      <div className="antialiased text-slate-900">
-        {currentTeacher ? (
-          <Dashboard 
-            teacher={currentTeacher} 
-            onLogout={handleLogout} 
-            onUpdateTeacher={handleUpdateTeacher} 
-          />
-        ) : (
-          <Login onLogin={handleLogin} teachers={teachers} />
+      <div className="antialiased text-slate-900 font-sans">
+        {!userRole && (
+           <Login onTeacherLogin={handleTeacherLogin} onStudentLogin={handleStudentLogin} />
+        )}
+
+        {userRole === 'teacher' && currentTeacher && (
+           <Dashboard 
+             teacher={currentTeacher} 
+             onLogout={handleLogout} 
+             onUpdateTeacher={handleUpdateTeacher} 
+           />
+        )}
+
+        {userRole === 'student' && currentStudent && (
+           <StudentDashboard student={currentStudent} onLogout={handleLogout} />
         )}
       </div>
     </ErrorBoundary>

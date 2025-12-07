@@ -1,8 +1,11 @@
+
 export enum Subject {
   MATH = '数学',
   ENGLISH = '英语',
   CHINESE = '语文'
 }
+
+export type UserRole = 'teacher' | 'student';
 
 export interface Teacher {
   id: string;
@@ -15,15 +18,29 @@ export interface Student {
   id: string;
   name: string;
   grade: string;
+  className: string; // e.g. "三年级二班"
   avatar: string;
-  recentScores: number[]; // Last 5 test scores
+  recentScores: number[];
+  needsReset?: boolean; // Force password reset flag
+}
+
+export interface Assignment {
+  id: string;
+  teacherId: string;
+  title: string;
+  description: string;
+  classTarget: string;
+  attachmentUrl?: string; // PDF link
+  createdAt: string;
 }
 
 export interface Homework {
   id: string;
   studentId: string;
+  assignmentId?: string; // Linked to Assignment
   title: string;
   content: string; // Could be text or description of image
+  imageUrl?: string; // Student uploaded image
   submittedAt: string;
   status: 'pending' | 'graded';
   score?: number;
@@ -37,20 +54,63 @@ export interface Exam {
   date: string;
   averageScore: number;
   totalStudents: number;
+  details?: {
+    subjects: string[];
+    students: {
+      name: string;
+      scores: Record<string, number>;
+      total: number;
+    }[];
+  };
+}
+
+export interface Textbook {
+  id: string;
+  title: string;
+  fileUrl: string;
+  createdAt: string;
+}
+
+// New Types for PPT and Quiz
+export interface PresentationSlide {
+  layout: 'TITLE' | 'CONTENT' | 'TWO_COLUMN' | 'CONCLUSION';
+  title: string;
+  content: string[]; 
+  notes: string; 
+  visualPrompt: string; // 用于生成AI图片的提示词 (英文)
+  backgroundImage?: string; // Base64 string of the generated image
+}
+
+export interface QuizQuestion {
+  difficulty: '基础' | '进阶' | '挑战';
+  question: string;
+  options: string[];
+  correctAnswer: number; 
+  explanation: string;
 }
 
 export interface LessonPlan {
   topic: string;
-  outline: {
-    title: string;
-    points: string[];
-    duration: string;
+  textbookContext?: string;
+  objectives: string[]; 
+  keyPoints: string[];  
+  process: {
+    phase: string;      
+    duration: string;   
+    activity: string;   
   }[];
+  blackboard: string[]; 
+  homework: string;     
+  // Extended fields
+  slides?: PresentationSlide[];
+  quiz?: QuizQuestion[];
 }
 
 export enum ViewState {
   LOGIN = 'LOGIN',
   DASHBOARD = 'DASHBOARD',
+  STUDENTS = 'STUDENTS', 
+  PUBLISH = 'PUBLISH',   
   HOMEWORK = 'HOMEWORK',
   EXAMS = 'EXAMS',
   ANALYSIS = 'ANALYSIS',

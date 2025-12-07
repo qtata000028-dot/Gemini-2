@@ -25,21 +25,21 @@ export const TEACHERS: Teacher[] = [
 ];
 
 export const MOCK_STUDENTS: Student[] = [
-  { id: 's1', name: '张小明', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Alex', recentScores: [85, 90, 88, 92, 95] },
-  { id: 's2', name: '李朵朵', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Bella', recentScores: [78, 82, 80, 85, 88] },
-  { id: 's3', name: '王强', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Charlie', recentScores: [60, 65, 58, 70, 72] },
-  { id: 's4', name: '陈思思', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Daisy', recentScores: [95, 98, 96, 99, 100] },
-  { id: 's5', name: '赵子龙', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Ethan', recentScores: [88, 89, 90, 91, 92] },
-  { id: 's6', name: '孙悟空', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix', recentScores: [70, 75, 72, 78, 80] },
-  { id: 's7', name: '白骨精', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Grace', recentScores: [92, 94, 91, 95, 98] },
-  { id: 's8', name: '猪八戒', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Henry', recentScores: [65, 68, 70, 72, 75] },
-  { id: 's9', name: '沙和尚', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Ivan', recentScores: [80, 82, 84, 86, 88] },
-  { id: 's10', name: '唐僧', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Jack', recentScores: [98, 99, 100, 99, 100] },
-  { id: 's11', name: '哪吒', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kyle', recentScores: [75, 78, 80, 82, 85] },
-  { id: 's12', name: '杨戬', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Leo', recentScores: [90, 92, 94, 96, 98] },
-  { id: 's13', name: '雷震子', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Max', recentScores: [82, 85, 88, 86, 90] },
-  { id: 's14', name: '姜子牙', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Nora', recentScores: [95, 96, 97, 98, 99] },
-  { id: 's15', name: '申公豹', grade: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Oscar', recentScores: [70, 68, 72, 75, 74] },
+  { id: 's1', name: '张小明', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Alex', recentScores: [85, 90, 88, 92, 95] },
+  { id: 's2', name: '李朵朵', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Bella', recentScores: [78, 82, 80, 85, 88] },
+  { id: 's3', name: '王强', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Charlie', recentScores: [60, 65, 58, 70, 72] },
+  { id: 's4', name: '陈思思', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Daisy', recentScores: [95, 98, 96, 99, 100] },
+  { id: 's5', name: '赵子龙', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Ethan', recentScores: [88, 89, 90, 91, 92] },
+  { id: 's6', name: '孙悟空', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix', recentScores: [70, 75, 72, 78, 80] },
+  { id: 's7', name: '白骨精', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Grace', recentScores: [92, 94, 91, 95, 98] },
+  { id: 's8', name: '猪八戒', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Henry', recentScores: [65, 68, 70, 72, 75] },
+  { id: 's9', name: '沙和尚', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Ivan', recentScores: [80, 82, 84, 86, 88] },
+  { id: 's10', name: '唐僧', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Jack', recentScores: [98, 99, 100, 99, 100] },
+  { id: 's11', name: '哪吒', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kyle', recentScores: [75, 78, 80, 82, 85] },
+  { id: 's12', name: '杨戬', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Leo', recentScores: [90, 92, 94, 96, 98] },
+  { id: 's13', name: '雷震子', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Max', recentScores: [82, 85, 88, 86, 90] },
+  { id: 's14', name: '姜子牙', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Nora', recentScores: [95, 96, 97, 98, 99] },
+  { id: 's15', name: '申公豹', grade: '三年级', className: '三年级二班', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Oscar', recentScores: [70, 68, 72, 75, 74] },
 ];
 
 export const MOCK_HOMEWORK: Homework[] = [

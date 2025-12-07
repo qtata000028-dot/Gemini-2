@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>新达小学教务系统 - 教师端</title>
+    <title>新达小学教务系统</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       // Polyfill for process.env
@@ -15,113 +16,72 @@
       :root {
         --glass-bg: rgba(255, 255, 255, 0.65);
         --glass-border: rgba(255, 255, 255, 0.4);
-        --primary-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
       }
 
       body {
         font-family: 'Noto Sans SC', sans-serif;
-        background-color: #eef2f6;
+        background-color: #f8fafc;
         overflow-x: hidden;
       }
 
-      /* Advanced 3D Aurora Mesh Gradient */
-      .mesh-bg {
-        background-color: #f3f4f6;
-        background-image: 
-          radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-          radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-          radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
-        background-size: 200% 200%;
-        min-height: 100vh;
-      }
-      
-      /* Light Mode Overlay */
-      .mesh-light {
-         background-image: 
-          radial-gradient(at 40% 20%, hsla(210,100%,96%,1) 0px, transparent 50%),
-          radial-gradient(at 80% 0%, hsla(189,100%,96%,1) 0px, transparent 50%),
-          radial-gradient(at 0% 50%, hsla(341,100%,96%,1) 0px, transparent 50%);
-         position: fixed;
-         inset: 0;
-         z-index: -1;
-         animation: meshMove 20s ease infinite alternate;
-      }
-
-      @keyframes meshMove {
-        0% { background-position: 0% 50%; }
-        100% { background-position: 100% 50%; }
-      }
-
-      /* Premium Glassmorphism */
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.8);
-        box-shadow: 
-          0 4px 6px -1px rgba(0, 0, 0, 0.02),
-          0 10px 15px -3px rgba(0, 0, 0, 0.05),
-          inset 0 0 20px rgba(255, 255, 255, 0.5);
-      }
-
-      .glass-card-hover {
-        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      }
-      .glass-card-hover:hover {
-        transform: translateY(-6px) scale(1.01);
-        box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.15);
-        border-color: #fff;
-        background: rgba(255, 255, 255, 0.85);
-      }
-
-      /* Animations */
-      @keyframes float {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
-      }
-      .animate-float {
-        animation: float 6s ease-in-out infinite;
-      }
-
+      /* Premium Scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.5);
-        border-radius: 4px;
+        background: #cbd5e1;
+        border-radius: 10px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: rgba(100, 116, 139, 0.8);
+        background: #94a3b8;
       }
 
-      .stagger-1 { animation-delay: 100ms; }
-      .stagger-2 { animation-delay: 150ms; }
-      .stagger-3 { animation-delay: 200ms; }
-      .stagger-4 { animation-delay: 250ms; }
-      .stagger-5 { animation-delay: 300ms; }
+      /* Glassmorphism Utilities */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      }
+      
+      .animate-float {
+        animation: float 8s ease-in-out infinite;
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-20px); }
+      }
+
+      /* Custom animations for input focus */
+      .focus-ring-anim {
+        transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
     </style>
   <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react": "https://esm.sh/react@19.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "tus-js-client": "https://esm.sh/tus-js-client@2.3.0",
+    "pptxgenjs": "https://esm.sh/pptxgenjs@3.12.0"
   }
 }
 </script>
 </head>
-  <body class="bg-slate-50 min-h-screen text-slate-800">
-    <div class="mesh-light"></div>
+  <body class="antialiased">
     <div id="root"></div>
-    <!-- CRITICAL FIX: Script entry point for Vite/Vercel -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

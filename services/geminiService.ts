@@ -1,5 +1,6 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { Subject, LessonPlan } from "../types";
+import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
 
 // Helper to get lazy initialized client
 const getAiClient = () => {
@@ -93,24 +94,45 @@ export const generateStudentAnalysis = async (
 
 export const generateLessonPlan = async (
   topic: string,
-  subject: string
+  subject: string,
+  textbookContext?: string
 ): Promise<LessonPlan | null> => {
   const modelId = 'gemini-2.5-flash';
 
+  const contextStr = textbookContext ? `教材版本上下文：${textbookContext}` : "通用小学标准教材";
+
   const prompt = `
-    你是一位专业的${subject}老师。请根据课题"${topic}"，为小学三年级学生设计一份PPT讲课大纲。
-    请返回严格的JSON格式，结构如下：
+    你是一位全国特级${subject}教师。
+    请基于"${contextStr}"，针对"${topic}"这一单元/课题，设计一份**完整的深度教学体系**。
+    
+    要求生成极其详细的教案，包含以下部分：
+    1. 教学目标（三维目标：知识与技能、过程与方法、情感态度价值观）
+    2. 教学重难点
+    3. 教学过程（精确到分钟的脚本，包含师生互动、提问设计、活动安排）
+    4. 板书设计（结构化展示）
+    5. 作业设计（分层作业）
+
+    请严格返回如下JSON结构：
     {
       "topic": "${topic}",
-      "outline": [
+      "textbookContext": "${textbookContext || '通用'}",
+      "objectives": ["目标1", "目标2", "目标3"],
+      "keyPoints": ["重点1", "难点1"],
+      "process": [
         {
-          "title": "幻灯片标题",
-          "points": ["要点1", "要点2", "互动问题"],
-          "duration": "预计时长(如5分钟)"
+          "phase": "一、激趣导入",
+          "duration": "5分钟",
+          "activity": "详细描述老师怎么说，学生怎么做..."
+        },
+        {
+          "phase": "二、探究新知",
+          "duration": "15分钟",
+          "activity": "..."
         }
-      ]
+      ],
+      "blackboard": ["主标题", "左侧要点", "右侧绘图"],
+      "homework": "详细的作业描述"
     }
-    请设计 4-6 张幻灯片，包含导入、知识讲解、课堂练习、总结。内容要生动有趣。
   `;
 
   try {
@@ -128,5 +150,128 @@ export const generateLessonPlan = async (
   } catch (error) {
     console.error("Gemini Lesson Plan Error:", error);
     return null;
+  }
+};
+
+// --- New Features with Banana (Gemini Image) ---
+
+export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
+  // Use the specific model ID for image generation
+  const modelId = 'gemini-2.5-flash-image';
+  
+  try {
+    const ai = getAiClient();
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: {
+        parts: [
+          { text: prompt + " high quality, educational illustration, 4k resolution, clean style, no text" }
+        ]
+      }
+    });
+
+    // Iterate through parts to find the image (inlineData)
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Image Generation Error:", error);
+    return null;
+  }
+};
+
+export const generatePPTSlides = async (
+  topic: string,
+  objectives: string[],
+  subject: string
+): Promise<PresentationSlide[]> => {
+  const modelId = 'gemini-2.5-flash';
+  const prompt = `
+    作为一名专业的小学${subject}教师和PPT设计专家，请为课题 "${topic}" 设计一套**8-12页**的高端教学PPT大纲。
+    
+    设计要求：
+    1. **视觉Prompt设计**：为每一页生成一个英文 'visualPrompt'。
+       - 封面页：要求生成 "Masterpiece, 3D abstract composition related to ${topic}, cinematic lighting, high detail, warm colors"。
+       - 内容页：要求生成 "Soft educational background pattern, minimalist, ${subject} elements, light colors, ample whitespace for text"。
+    2. **内容精炼**：内容要适合PPT展示，每页不超过4个要点。
+    3. **结构**：
+       - 第1页：Title (封面)
+       - 第2页：Objectives (教学目标)
+       - 第3-N页：Teaching Content (核心知识点，图文并茂)
+       - 倒数第2页：Interactive Quiz (课堂互动)
+       - 最后一页：Conclusion & Homework (总结与作业)
+
+    请严格返回JSON数组：
+    [
+      {
+        "layout": "TITLE" | "CONTENT" | "TWO_COLUMN" | "CONCLUSION",
+        "title": "页面标题",
+        "content": ["要点1", "要点2", "要点3"],
+        "notes": "演讲备注...",
+        "visualPrompt": "Detailed English description for image generation"
+      }
+    ]
+  `;
+
+  try {
+    const ai = getAiClient();
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(response.text || "[]");
+  } catch (error) {
+    console.error("PPT Generation Error", error);
+    return [];
+  }
+};
+
+export const generateQuiz = async (
+  topic: string,
+  keyPoints: string[]
+): Promise<QuizQuestion[]> => {
+  const modelId = 'gemini-2.5-flash';
+  // Enforce 10 questions explicitly
+  const prompt = `
+    基于课题 "${topic}" 和重难点: ${keyPoints.join(',')}，
+    设计一份包含 **10道** 题目的课后练习闯关卷。
+    
+    要求：
+    1. 包含 3道基础题，4道进阶题，3道挑战题。
+    2. 题目要生动有趣，贴近小学生生活，避免枯燥的计算或死记硬背。
+    3. 选项要有干扰性，但解析要清晰。
+    
+    请严格返回JSON数组：
+    [
+      {
+        "difficulty": "基础" | "进阶" | "挑战",
+        "question": "题目内容",
+        "options": ["选项A", "选项B", "选项C", "选项D"],
+        "correctAnswer": 0, // 0-3
+        "explanation": "解析内容"
+      }
+    ]
+  `;
+
+  try {
+    const ai = getAiClient();
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    const data = JSON.parse(response.text || "[]");
+    // Fallback if model returns less than 10
+    if (Array.isArray(data) && data.length > 0) return data;
+    return [];
+  } catch (error) {
+    console.error("Quiz Generation Error", error);
+    return [];
   }
 };
