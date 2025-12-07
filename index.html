@@ -8,7 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       // Polyfill for process.env
-      window.process = window.process || { env: { API_KEY: '' } };
+      // 优先使用全局注入的变量，如果为空则使用提供的 API Key (解决 Vercel 客户端无法读取环境变量的问题)
+      window.process = window.process || { env: {} };
+      window.process.env.API_KEY = window.process.env.API_KEY || 'AIzaSyBWoddFIDsKvjIuzC_Wu1dRW9O-lqqW7js';
     </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
