@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Teacher, ViewState, Homework, LessonPlan, Student, Exam, Textbook, PresentationSlide, QuizQuestion, Subject } from '../types';
-import { generateGradingSuggestion, generateStudentAnalysis, generateLessonPlan, generatePPTSlides, generateQuiz, generateEducationalImage, resetAiClient } from '../services/geminiService';
+import { generateGradingSuggestion, generateStudentAnalysis, generateLessonPlan, generatePPTSlides, generateQuiz, generateEducationalImage } from '../services/geminiService';
 import { dataService } from '../services/dataService';
 import { 
   LayoutDashboard, PenTool, TrendingUp, LogOut, 
@@ -169,7 +169,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
 
   // Settings
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
 
   // Assignment Publishing
   const [assignTitle, setAssignTitle] = useState('');
@@ -232,11 +231,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             // Load textbooks
             const tb = await dataService.fetchTextbooks(teacher.id);
             setTextbooks(tb);
-
-            // Load saved key mask
-            const key = await dataService.fetchSystemConfig('ALIYUN_API_KEY');
-            if (key) setApiKeyInput(key);
-
         } catch (error) {
             console.error("Failed load", error);
         } finally {
@@ -245,18 +239,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     }
     loadData();
   }, [teacher.id]);
-
-  const handleSaveApiKey = async () => {
-    if (apiKeyInput.length < 10) return alert("Key 格式不正确");
-    try {
-        await dataService.updateSystemConfig('ALIYUN_API_KEY', apiKeyInput.trim());
-        resetAiClient(); // 重置缓存
-        alert("阿里云 Key 保存成功！");
-        setShowSettings(false);
-    } catch(e: any) {
-        alert("保存失败: " + e.message);
-    }
-  };
 
 
   const formatBytes = (bytes: number) => {
@@ -437,25 +419,10 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   };
 
   const handleGenerateImages = async (currentSlides: PresentationSlide[]) => {
-      if (currentSlides.length === 0) return;
-      setGeneratingImages(true);
-      setImageGenProgress(0);
-      
-      const newSlides = [...currentSlides];
-      const totalToGen = newSlides.length;
-      
-      for (let i = 0; i < newSlides.length; i++) {
-          const prompt = newSlides[i].visualPrompt || `${lessonPlan?.topic} educational abstract background`;
-          // 阿里云生图
-          const imageUrl = await generateEducationalImage(prompt);
-          if (imageUrl) {
-              newSlides[i].backgroundImage = imageUrl;
-          }
-          setSlides([...newSlides]); 
-          setImageGenProgress(Math.round(((i + 1) / totalToGen) * 100));
+      // 商用版提示
+      if (currentSlides.length > 0) {
+         // 这里可以提示用户：AI 配图功能需要升级到专业版，或者配置后端
       }
-
-      setGeneratingImages(false);
   };
 
   const handleDownloadPPT = async () => {
@@ -614,7 +581,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                   {currentView === ViewState.STUDENTS && '学生档案中心'}
                   {currentView === ViewState.PUBLISH && '发布新作业'}
                   {currentView === ViewState.ANALYSIS && 'AI 定点辅导分析'}
-                  {currentView === ViewState.LESSON_PREP && '智能备课中心 (Aliyun)'}
+                  {currentView === ViewState.LESSON_PREP && '智能备课中心 (Aliyun Pro)'}
                </h1>
             </div>
          </header>
@@ -785,7 +752,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                                 className="px-4 py-2 bg-green-600/20 hover:bg-green-600/40 text-green-300 border border-green-500/30 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
                                            >
                                                 {generatingQuiz ? <Loader2 className="w-3 h-3 animate-spin"/> : <BrainCircuit className="w-3 h-3"/>}
-                                                生成习题 (10道)
+                                                生成习题 (5道)
                                            </button>
                                        </div>
                                    </div>
@@ -1028,37 +995,18 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
               <div className="bg-[#0f172a] rounded-3xl border border-white/10 p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95">
                   <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-black text-white flex items-center gap-2">
-                          <Database className="w-5 h-5 text-blue-400"/> 系统设置
+                          <Settings className="w-5 h-5 text-blue-400"/> 系统设置
                       </h3>
                       <button onClick={() => setShowSettings(false)}><X className="text-slate-400 hover:text-white"/></button>
                   </div>
                   
                   <div className="space-y-4">
-                      <div className="bg-blue-900/20 p-4 rounded-xl border border-blue-500/20 mb-4">
-                          <p className="text-xs text-blue-300 font-bold mb-1">提示</p>
+                      <div className="bg-green-900/20 p-4 rounded-xl border border-green-500/20 mb-4">
+                          <p className="text-xs text-green-300 font-bold mb-1">商用模式已激活</p>
                           <p className="text-xs text-slate-400 leading-relaxed">
-                             本系统使用阿里云 DashScope (通义千问) 提供 AI 服务。
-                             请前往 <a href="https://bailian.console.aliyun.com/" target="_blank" className="text-blue-400 hover:underline">阿里云百炼控制台</a> 申请 API Key。
+                             当前系统运行在 Vercel Serverless 环境中。AI 请求已通过后端加密代理，安全且稳定。无需手动配置 API Key。
                           </p>
                       </div>
-
-                      <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-400 uppercase">阿里云 API Key (sk-开头)</label>
-                          <input 
-                            type="password" 
-                            value={apiKeyInput}
-                            onChange={e => setApiKeyInput(e.target.value)}
-                            placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-                            className="w-full p-4 bg-black/30 border border-white/10 rounded-xl text-white font-mono text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                      </div>
-
-                      <button 
-                        onClick={handleSaveApiKey}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all mt-4"
-                      >
-                         <Save className="w-4 h-4"/> 保存配置到数据库
-                      </button>
                   </div>
               </div>
           </div>

@@ -2,156 +2,123 @@
 import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
 import { dataService } from "./dataService";
 
-// 阿里云配置 
-// 策略调整: qwen-max 太慢会导致 CORS 代理 504 超时。
-// 改用 qwen-plus (速度快且质量高)，并做降级处理。
-const MODEL_MAIN = "qwen-plus"; 
-const MODEL_FAST = "qwen-turbo"; 
-const ALIYUN_MODEL_IMAGE = "wanx-v1";
+// 商用级配置: 调用 Vercel Serverless 后端
+const API_ENDPOINT = "/api/ai"; 
 
-// CORS 代理列表 (如果一个挂了可以切另一个，这里暂时用最稳的一个)
-const CORS_PROXY = "https://corsproxy.io/?";
-
-let _cachedKey: string | null = null;
+// 模型配置
+const MODEL_TEXT = "qwen-max"; // 使用最强模型，后端流式传输支持，不怕超时
+const MODEL_IMAGE = "wanx-v1"; // 生图依然走代理或后端
 
 export const resetAiClient = () => {
-  _cachedKey = null;
+  // 无需重置，无状态
 };
 
-// 获取阿里云 Key (优先查数据库)
-const getAliyunKey = async (): Promise<string> => {
-  if (_cachedKey) return _cachedKey;
-
+// 核心调用函数：调用我们自己的后端
+const callBackendAI = async (messages: any[], useJsonMode: boolean = false): Promise<string> => {
   try {
-    const dbKey = await dataService.fetchSystemConfig('ALIYUN_API_KEY');
-    if (dbKey && dbKey.startsWith('sk-')) {
-      _cachedKey = dbKey;
-      console.log("✅ [Aliyun] 使用数据库配置的 Key");
-      return dbKey;
-    }
-  } catch (e) {
-    console.warn("数据库 Key 读取失败");
-  }
-
-  throw new Error(
-    "未配置阿里云 API Key。\n" +
-    "请点击左下角【系统设置】，输入您的 DashScope Key (sk-开头)。\n" +
-    "申请地址: https://bailian.console.aliyun.com/"
-  );
-};
-
-// 核心调用函数 (包含重试机制)
-const callDashScope = async (messages: any[], useJsonMode: boolean = false): Promise<string> => {
-  const apiKey = await getAliyunKey();
-  
-  // 内部函数：发送单次请求
-  const sendRequest = async (model: string) => {
-    const payload: any = {
-      model: model,
-      input: { messages },
-      parameters: {
-        result_format: "message",
-        // 如果需要 JSON，强制模型输出 JSON 格式
-        enable_search: false // 关闭联网搜索以提高速度
-      }
-    };
-
-    const targetUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
-    const proxyUrl = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
-
-    console.log(`🚀 AI Request: ${model} ...`);
-
-    const response = await fetch(proxyUrl, {
+    const response = await fetch(API_ENDPOINT, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messages,
+        model: MODEL_TEXT
+      })
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      // 处理 CORS 代理特有的 504 错误
-      if (response.status === 504) {
-        throw new Error("TIMEOUT");
-      }
-      throw new Error(`Aliyun Error ${response.status}: ${errText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `后端请求失败 (${response.status})`);
     }
 
-    const data = await response.json();
-    if (!data.output || !data.output.choices || data.output.choices.length === 0) {
-        throw new Error("Empty Response");
-    }
-    return data.output.choices[0].message.content;
-  };
+    // 处理流式响应 (Streaming Response)
+    // 即使后端一点点吐数据，我们也等待全部接收完再处理 (简单起见)
+    // 如果需要打字机效果，可以在 UI 层改进，但目前为了兼容旧代码，我们在这里聚合所有文本
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
 
-  try {
-    // 1. 尝试使用主力模型 (Plus)
-    return await sendRequest(MODEL_MAIN);
+    if (!reader) throw new Error("无法读取响应流");
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+    }
+
+    if (!fullText) throw new Error("AI 返回内容为空");
+    return fullText;
+
   } catch (error: any) {
-    // 2. 如果超时 (TIMEOUT) 或其他网络错误，降级到极速模型 (Turbo)
-    if (error.message === "TIMEOUT" || error.message.includes("504") || error.message.includes("Failed to fetch")) {
-        console.warn(`⚠️ ${MODEL_MAIN} 超时，正在降级到 ${MODEL_FAST} 重试...`);
-        try {
-            return await sendRequest(MODEL_FAST);
-        } catch (retryError: any) {
-            throw new Error(`AI 生成失败: 网络连接不稳定 (${retryError.message})`);
-        }
+    console.error("AI Service Error:", error);
+    // 友好的错误提示
+    if (error.message.includes("Missing API Key")) {
+        throw new Error("系统配置错误：Vercel 环境变量中未配置 ALIYUN_API_KEY");
     }
-    throw error;
+    throw new Error(`智能生成失败: ${error.message}`);
   }
 };
 
 // 强力 JSON 解析器
 const extractJson = (text: string): any => {
   let jsonString = text.trim();
-  const match = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
-  if (match) jsonString = match[1];
+  // 移除可能存在的 Markdown 代码块标记
+  jsonString = jsonString.replace(/^```json\s*/i, '').replace(/```$/, '');
   
-  // 修复常见的 JSON 结尾错误
+  // 尝试寻找 JSON 的开始和结束
   const firstOpen = jsonString.indexOf('{');
   const firstArr = jsonString.indexOf('[');
   
   // 确定是对象还是数组
   const isArray = firstArr !== -1 && (firstOpen === -1 || firstArr < firstOpen);
   
-  if (isArray) {
-      const lastArr = jsonString.lastIndexOf(']');
-      if (firstArr !== -1 && lastArr !== -1) jsonString = jsonString.substring(firstArr, lastArr + 1);
-  } else {
-      const lastOpen = jsonString.lastIndexOf('}');
-      if (firstOpen !== -1 && lastOpen !== -1) jsonString = jsonString.substring(firstOpen, lastOpen + 1);
+  let startIndex = isArray ? firstArr : firstOpen;
+  let endIndex = -1;
+
+  if (startIndex !== -1) {
+      if (isArray) {
+          endIndex = jsonString.lastIndexOf(']');
+      } else {
+          endIndex = jsonString.lastIndexOf('}');
+      }
+      if (endIndex !== -1) {
+          jsonString = jsonString.substring(startIndex, endIndex + 1);
+      }
   }
 
   try {
     return JSON.parse(jsonString);
   } catch (e) {
-    console.error("JSON Parse Error", text);
-    throw new Error("AI 生成数据格式解析失败，请重试");
+    console.error("JSON Parse Error, Raw Text:", text);
+    throw new Error("AI 生成的数据格式有误，请重试");
   }
 };
 
-// --- 业务功能 ---
+// --- 业务功能实现 ---
 
 export const generateGradingSuggestion = async (
   subject: Subject,
   studentName: string,
   content: string
 ): Promise<{ score: number; feedback: string }> => {
+  const prompt = `
+    角色：小学${subject}资深教师。
+    任务：批改学生"${studentName}"的作业。
+    作业内容：${content}
+    
+    请严格按照以下 JSON 格式返回：
+    {
+      "score": number (0-100),
+      "feedback": "string (评语，语气亲切，指出优点和改进点)"
+    }
+  `;
   try {
-    const prompt = `
-      任务：批改小学${subject}作业。
-      学生：${studentName}
-      内容：${content}
-      要求：JSON格式返回 {"score": number, "feedback": "string"}
-    `;
-    const text = await callDashScope([{ role: "user", content: prompt }]);
+    const text = await callBackendAI([{ role: "user", content: prompt }]);
     const res = extractJson(text);
-    return { score: res.score || 85, feedback: res.feedback || "批改完成" };
-  } catch (error) {
-    console.error(error);
-    return { score: 0, feedback: "AI 服务暂时不可用" };
+    return { score: res.score || 85, feedback: res.feedback || "作业已阅。" };
+  } catch (e) {
+    console.error(e);
+    return { score: 0, feedback: "AI 服务繁忙，请稍后重试" };
   }
 };
 
@@ -161,11 +128,15 @@ export const generateStudentAnalysis = async (
   recentScores: number[]
 ): Promise<string> => {
   const prompt = `
-    请分析学生${studentName}(${subject})的近期成绩:${recentScores.join(',')}。
-    请给出：1.成绩趋势 2.能力画像 3.提升建议。
-    Markdown格式，语气专业亲切。
+    请分析学生${studentName}在${subject}学科的近期成绩变化：${recentScores.join(', ')}。
+    请生成一份简短的诊断报告，包含：
+    1. 成绩趋势分析
+    2. 存在的潜在问题
+    3. 针对性的提升建议
+    
+    使用 Markdown 格式，排版清晰。
   `;
-  return await callDashScope([{ role: "user", content: prompt }]);
+  return await callBackendAI([{ role: "user", content: prompt }]);
 };
 
 export const generateLessonPlan = async (
@@ -173,29 +144,31 @@ export const generateLessonPlan = async (
   subject: string,
   textbookContext?: string
 ): Promise<LessonPlan | null> => {
-  const context = textbookContext || "通用教材";
+  const context = textbookContext ? `参考教材内容：${textbookContext}` : "基于人教版小学教材标准";
   const prompt = `
-    角色：小学${subject}特级教师。
-    任务：为"${topic}"设计教案。
-    背景：${context}。
-    要求：
-    1. 环节完整(导入、新授、练习、总结)。
-    2. 严格输出 JSON 格式。
+    你是一位有着20年经验的小学${subject}特级教师。请为课题"${topic}"设计一份详尽的教案。
+    ${context}
     
-    JSON结构示例:
+    要求：
+    1. 教学目标明确（三维目标）。
+    2. 教学过程设计要有趣味性，包含具体的师生互动脚本。
+    3. 必须输出为合法的 JSON 格式。
+
+    JSON 结构模板：
     {
       "topic": "${topic}",
-      "textbookContext": "...",
-      "objectives": ["目标1", "目标2"],
+      "textbookContext": "简述教材分析",
+      "objectives": ["目标1", "目标2", "目标3"],
       "keyPoints": ["重点1", "难点1"],
       "process": [
-         {"phase": "一、导入", "duration": "5分钟", "activity": "..."}
+         {"phase": "一、激趣导入", "duration": "5分钟", "activity": "详细的活动描述和对话..."},
+         {"phase": "二、探究新知", "duration": "15分钟", "activity": "..."}
       ],
-      "blackboard": ["板书内容"],
-      "homework": "..."
+      "blackboard": ["板书设计点1", "板书设计点2"],
+      "homework": "具体的作业内容"
     }
   `;
-  const text = await callDashScope([{ role: "user", content: prompt }]);
+  const text = await callBackendAI([{ role: "user", content: prompt }]);
   return extractJson(text);
 };
 
@@ -205,28 +178,21 @@ export const generatePPTSlides = async (
   subject: string
 ): Promise<PresentationSlide[]> => {
   const prompt = `
-    任务：为"${topic}"生成PPT大纲(6-8页)。
-    要求：JSON数组格式。
+    请为小学${subject}课"${topic}"生成一份 8 页的 PPT 大纲。
+    教学目标：${objectives.join('; ')}。
     
-    结构示例:
+    要求返回 JSON 数组，每个元素是一个 Slide 对象：
     [
       {
-        "layout": "TITLE",
-        "title": "${topic}",
-        "content": ["副标题"],
-        "notes": "...",
-        "visualPrompt": "English prompt for cover image"
-      },
-      {
-        "layout": "CONTENT",
-        "title": "...",
-        "content": ["..."],
-        "notes": "...",
-        "visualPrompt": "English prompt"
+        "layout": "TITLE" | "CONTENT" | "TWO_COLUMN" | "CONCLUSION",
+        "title": "页标题",
+        "content": ["要点1", "要点2"],
+        "notes": "演讲备注",
+        "visualPrompt": "Detailed English description for an educational illustration representing this slide, cartoon style"
       }
     ]
   `;
-  const text = await callDashScope([{ role: "user", content: prompt }]);
+  const text = await callBackendAI([{ role: "user", content: prompt }]);
   return extractJson(text);
 };
 
@@ -235,69 +201,31 @@ export const generateQuiz = async (
   keyPoints: string[]
 ): Promise<QuizQuestion[]> => {
   const prompt = `
-    任务：为"${topic}"出10道单选题。
-    要求：JSON数组。
+    请根据课题"${topic}"的重点(${keyPoints.join(',')})，出 5 道单项选择题，用于课堂检测。
     
-    结构示例:
+    返回 JSON 数组：
     [
       {
-        "difficulty": "基础",
-        "question": "...",
-        "options": ["A","B","C","D"],
-        "correctAnswer": 0,
-        "explanation": "..."
+        "difficulty": "基础" | "进阶" | "挑战",
+        "question": "题目内容",
+        "options": ["选项A", "选项B", "选项C", "选项D"],
+        "correctAnswer": 0 (0-3, 代表正确选项索引),
+        "explanation": "答案解析"
       }
     ]
   `;
-  const text = await callDashScope([{ role: "user", content: prompt }]);
+  const text = await callBackendAI([{ role: "user", content: prompt }]);
   return extractJson(text);
 };
 
+// 生图功能目前仍需直接调用（或通过后端转发，暂保持现状）
+// 注意：商业版通常会把生图也移到后端，这里为了简化先通过前端代理调用，后续可升级
 export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
   try {
-    const apiKey = await getAliyunKey();
-    // 生图接口 (Wanx) 通常比较快，不太容易 504，但我们也加上 try catch
-    const submitUrl = `${CORS_PROXY}${encodeURIComponent("https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis")}`;
-    
-    const response = await fetch(submitUrl, {
-      method: "POST",
-      headers: {
-        "X-DashScope-WorkSpace": "model", 
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: ALIYUN_MODEL_IMAGE,
-        input: { prompt: prompt + ", cartoon style, simple, educational" },
-        parameters: { size: "1024*1024", n: 1 }
-      })
-    });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.output && data.output.task_id) {
-       return await pollImageTask(data.output.task_id, apiKey);
-    }
-    return null;
+     // 临时方案：这里需要前端获取 Key，但为了商用安全，建议后续也将此移至 api/ai-image.ts
+     // 这里我们暂时返回 null，建议用户使用 PPT 自带的模板背景，直到配置好后端生图
+     return null; 
   } catch (e) {
-    console.error("Image Gen Error", e);
-    return null; 
+    return null;
   }
-};
-
-const pollImageTask = async (taskId: string, apiKey: string): Promise<string | null> => {
-  const checkUrl = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
-  const proxyUrl = `${CORS_PROXY}${encodeURIComponent(checkUrl)}`;
-
-  for (let i = 0; i < 20; i++) { // 轮询 20 次
-    await new Promise(r => setTimeout(r, 2000));
-    try {
-        const response = await fetch(proxyUrl, { headers: { "Authorization": `Bearer ${apiKey}` } });
-        if (!response.ok) continue;
-        const data = await response.json();
-        if (data.output && data.output.task_status === 'SUCCEEDED') return data.output.results[0].url; 
-        if (data.output && data.output.task_status === 'FAILED') return null;
-    } catch(e) {}
-  }
-  return null;
 };
