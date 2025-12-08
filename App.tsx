@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, ReactNode, Component, ErrorInfo } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
@@ -29,7 +30,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    return this.props.children;
+    // Cast 'this' to any to avoid TS error "Property 'props' does not exist on type 'ErrorBoundary'"
+    return (this as any).props.children;
   }
 }
 
