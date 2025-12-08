@@ -4,8 +4,9 @@ import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
 
 let _cachedClient: GoogleGenAI | null = null;
 
-// 使用 Google 推荐的最新 Flash 模型
-const MODEL_NAME = "gemini-2.5-flash"; 
+// 使用稳定版模型，防止 404 错误
+const MODEL_NAME = "gemini-1.5-flash";
+// 图片生成仍尝试使用专用模型，如果您的 Key 不支持，代码会自动降级处理（不生成图片）
 const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
 
 export const resetAiClient = () => {
@@ -31,7 +32,7 @@ const getAiClient = async (): Promise<GoogleGenAI> => {
     apiKey = process.env.VITE_API_KEY;
   }
 
-  // 3. 最后的尝试：检查是否有未带 VITE_ 前缀的 API_KEY (通常在 Vite 前端中读不到，除非配置了 define)
+  // 3. 最后的尝试：检查是否有未带 VITE_ 前缀的 API_KEY
   if (!apiKey && typeof process !== 'undefined' && process.env && process.env.API_KEY) {
      apiKey = process.env.API_KEY;
   }
@@ -61,7 +62,7 @@ const handleGeminiError = (error: any, context: string) => {
     throw new Error("API Key 无效 (401): 请检查 Vercel 环境变量 VITE_API_KEY 是否配置正确。");
   }
   if (msg.includes('404') || msg.includes('not found')) {
-    throw new Error(`模型未找到 (404): 当前区域可能不支持 ${MODEL_NAME}，或 Key 权限不足。`);
+    throw new Error(`模型不可用 (404): 当前 Key 可能不支持 ${MODEL_NAME}，或模型未对该区域开放。`);
   }
   throw new Error(`AI 请求失败: ${msg.substring(0, 80)}...`);
 };
@@ -156,7 +157,7 @@ export const generateGradingSuggestion = async (
       }
     });
 
-    // 注意: @google/genai SDK 使用 .text 属性 (Getter)，而不是方法
+    // Google GenAI SDK v1.0+ 使用 .text 属性 (getter)
     const text = response.text || "{}";
     const result = JSON.parse(text);
     return {
@@ -225,7 +226,8 @@ export const generateLessonPlan = async (
 export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = await getAiClient();
-    // 使用专门的图像模型
+    // 尝试使用专用图像模型
+    // 注意：如果您的 Key 无法访问 gemini-2.5-flash-image，此处会报错并被捕获，不影响主流程
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL_NAME,
       contents: {
@@ -242,7 +244,8 @@ export const generateEducationalImage = async (prompt: string): Promise<string |
     }
     return null;
   } catch (error) {
-    console.warn("Image Gen Error (Non-fatal):", error);
+    // 默默失败，不打断 PPT 生成流程
+    console.warn("Image Gen Error (Non-fatal): Model likely not available.", error);
     return null;
   }
 };
