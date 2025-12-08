@@ -6,8 +6,8 @@ import { dataService } from "./dataService";
 const API_ENDPOINT = "/api/ai"; 
 
 // 模型配置
-const MODEL_TEXT = "qwen-max"; // 使用最强模型，后端流式传输支持，不怕超时
-const MODEL_IMAGE = "wanx-v1"; // 生图依然走代理或后端
+// qwen-max: 通义千问千亿级旗舰模型，适合复杂任务
+const MODEL_TEXT = "qwen-max"; 
 
 export const resetAiClient = () => {
   // 无需重置，无状态
@@ -94,7 +94,7 @@ const extractJson = (text: string): any => {
   }
 };
 
-// --- 业务功能实现 ---
+// --- 业务功能实现 (火力全开版) ---
 
 export const generateGradingSuggestion = async (
   subject: Subject,
@@ -102,14 +102,19 @@ export const generateGradingSuggestion = async (
   content: string
 ): Promise<{ score: number; feedback: string }> => {
   const prompt = `
-    角色：小学${subject}资深教师。
-    任务：批改学生"${studentName}"的作业。
+    角色：拥有30年教龄的小学${subject}特级教师。
+    任务：深度批改学生"${studentName}"的作业。
     作业内容：${content}
     
-    请严格按照以下 JSON 格式返回：
+    请进行“专家级”批改，要求：
+    1. 评分标准：严格且公正，满分100。
+    2. 评语风格：使用“三明治评价法”（肯定优点 -> 指出具体问题 -> 提出改进建议），语气要亲切、有激励性。
+    3. 评语内容：拒绝笼统的“做得不错”，必须指出具体的知识点漏洞或逻辑错误。
+    
+    严格返回 JSON:
     {
       "score": number (0-100),
-      "feedback": "string (评语，语气亲切，指出优点和改进点)"
+      "feedback": "string (100字左右的详细评语)"
     }
   `;
   try {
@@ -128,13 +133,16 @@ export const generateStudentAnalysis = async (
   recentScores: number[]
 ): Promise<string> => {
   const prompt = `
-    请分析学生${studentName}在${subject}学科的近期成绩变化：${recentScores.join(', ')}。
-    请生成一份简短的诊断报告，包含：
-    1. 成绩趋势分析
-    2. 存在的潜在问题
-    3. 针对性的提升建议
-    
-    使用 Markdown 格式，排版清晰。
+    角色：资深教育心理学家 & 数据分析师。
+    分析对象：${studentName}，科目：${subject}。
+    近期成绩序列：${recentScores.join(', ')} (按时间顺序，最后一次为最近)。
+
+    请生成一份《深度学情诊断报告》，字数约 400 字，Markdown 格式。
+    内容必须包含：
+    1. **📊 成绩趋势雷达**：计算波动率，判断是“稳步上升”、“起伏不定”还是“下滑预警”。
+    2. **🧠 归因分析**：结合学科特点，推测可能的薄弱环节（如：计算粗心、阅读理解偏差、逻辑思维断层、学习态度问题）。
+    3. **❤️ 心理状态评估**：分析是否存在畏难情绪、学习倦怠或考试焦虑。
+    4. **🚀 精准提升方案**：给出下周具体的复习计划（精确到每天做什么，例如：周一复习错题本，周二专项训练）。
   `;
   return await callBackendAI([{ role: "user", content: prompt }]);
 };
@@ -144,28 +152,38 @@ export const generateLessonPlan = async (
   subject: string,
   textbookContext?: string
 ): Promise<LessonPlan | null> => {
-  const context = textbookContext ? `参考教材内容：${textbookContext}` : "基于人教版小学教材标准";
+  const context = textbookContext ? `参考教材深度解析：${textbookContext}` : "基于最新国家课程标准 (New Curriculum Standards)";
   const prompt = `
-    你是一位有着20年经验的小学${subject}特级教师。请为课题"${topic}"设计一份详尽的教案。
+    你是一位追求卓越的小学${subject}特级教师。请为课题"${topic}"设计一份**特级公开课级别的逐字稿教案**。
     ${context}
     
-    要求：
-    1. 教学目标明确（三维目标）。
-    2. 教学过程设计要有趣味性，包含具体的师生互动脚本。
-    3. 必须输出为合法的 JSON 格式。
+    **核心要求 (火力全开模式)**：
+    1. **拒绝简略**：不要只写“提问”，要写出“【教师语言】... 【预设学生回答】...”。
+    2. **设计意图**：每个环节都要标注背后的教育心理学原理或设计意图。
+    3. **互动性**：设计至少 3 个高思维含量的互动环节（小组讨论、角色扮演、实验探究）。
+    4. **结构完整**：JSON 结构必须严格符合要求。
 
-    JSON 结构模板：
+    JSON 结构模板:
     {
       "topic": "${topic}",
-      "textbookContext": "简述教材分析",
-      "objectives": ["目标1", "目标2", "目标3"],
-      "keyPoints": ["重点1", "难点1"],
+      "textbookContext": "深度教材分析与学情预估...",
+      "objectives": ["知识与技能目标...", "过程与方法目标...", "情感态度价值观目标..."],
+      "keyPoints": ["核心重难点1", "易错点解析"],
       "process": [
-         {"phase": "一、激趣导入", "duration": "5分钟", "activity": "详细的活动描述和对话..."},
-         {"phase": "二、探究新知", "duration": "15分钟", "activity": "..."}
+         {
+             "phase": "一、情境导入 (5分钟)", 
+             "duration": "5m", 
+             "activity": "【教师语言】同学们... \n【学生活动】观察... \n【设计意图】通过..."
+         },
+         {
+             "phase": "二、深度探究 (15分钟)", 
+             "duration": "15m", 
+             "activity": "..."
+         }
+         // 需包含至少 4-5 个环节
       ],
-      "blackboard": ["板书设计点1", "板书设计点2"],
-      "homework": "具体的作业内容"
+      "blackboard": ["主板书设计...", "副板书(草稿区)..."],
+      "homework": "分层作业设计：\n1. 基础题...\n2. 拓展题..."
     }
   `;
   const text = await callBackendAI([{ role: "user", content: prompt }]);
@@ -178,17 +196,22 @@ export const generatePPTSlides = async (
   subject: string
 ): Promise<PresentationSlide[]> => {
   const prompt = `
-    请为小学${subject}课"${topic}"生成一份 8 页的 PPT 大纲。
+    为小学${subject}公开课"${topic}"设计一份世界级的 PPT 演示大纲 (8页)。
     教学目标：${objectives.join('; ')}。
     
-    要求返回 JSON 数组，每个元素是一个 Slide 对象：
+    要求：
+    1. **内容充实**：每一页的 content 数组至少包含 4-5 个详细的知识点或指令，绝不要只写标题。
+    2. **视觉提示 (Visual Prompt)**：为每一页生成极具艺术感的 AI 绘画提示词 (英文)，风格统一为 "3D Pixar style education illustration, bright colors, high detail"。
+    3. **演讲备注 (Notes)**：为老师提供详细的口述脚本，就像演讲提词器一样。
+
+    返回 JSON 数组 (PresentationSlide 结构):
     [
       {
         "layout": "TITLE" | "CONTENT" | "TWO_COLUMN" | "CONCLUSION",
         "title": "页标题",
-        "content": ["要点1", "要点2"],
-        "notes": "演讲备注",
-        "visualPrompt": "Detailed English description for an educational illustration representing this slide, cartoon style"
+        "content": ["要点1 (详细)", "要点2 (详细)"],
+        "notes": "老师演讲脚本...",
+        "visualPrompt": "English prompt for AI image generation..."
       }
     ]
   `;
@@ -201,16 +224,20 @@ export const generateQuiz = async (
   keyPoints: string[]
 ): Promise<QuizQuestion[]> => {
   const prompt = `
-    请根据课题"${topic}"的重点(${keyPoints.join(',')})，出 5 道单项选择题，用于课堂检测。
+    基于课题"${topic}"，设计 5 道**高信度、高区分度**的课堂检测题。
     
-    返回 JSON 数组：
+    要求：
+    1. **难度分层**：1道基础，2道中等，1道易错陷阱题，1道高阶思维题。
+    2. **解析详尽**：explanation 字段必须解释“为什么选A，为什么不选BCD”，指出干扰项的设置逻辑。
+    
+    返回 JSON 数组:
     [
       {
         "difficulty": "基础" | "进阶" | "挑战",
         "question": "题目内容",
         "options": ["选项A", "选项B", "选项C", "选项D"],
-        "correctAnswer": 0 (0-3, 代表正确选项索引),
-        "explanation": "答案解析"
+        "correctAnswer": 0 (0-3),
+        "explanation": "详细解析..."
       }
     ]
   `;
@@ -218,14 +245,7 @@ export const generateQuiz = async (
   return extractJson(text);
 };
 
-// 生图功能目前仍需直接调用（或通过后端转发，暂保持现状）
-// 注意：商业版通常会把生图也移到后端，这里为了简化先通过前端代理调用，后续可升级
 export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
-  try {
-     // 临时方案：这里需要前端获取 Key，但为了商用安全，建议后续也将此移至 api/ai-image.ts
-     // 这里我们暂时返回 null，建议用户使用 PPT 自带的模板背景，直到配置好后端生图
-     return null; 
-  } catch (e) {
-    return null;
-  }
+  // 图片生成目前暂未对接后端流式，后续可扩展
+  return null;
 };
