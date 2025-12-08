@@ -6,6 +6,27 @@ import * as XLSX from 'xlsx';
 export type UploadProgressCallback = (status: 'compressing' | 'uploading', percent: number, loaded: number, total: number) => void;
 
 export const dataService = {
+  // --- SYSTEM CONFIG (ALIYUN KEY) ---
+
+  async fetchSystemConfig(key: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('system_config')
+      .select('value')
+      .eq('key', key)
+      .single();
+    
+    if (error || !data) return null;
+    return data.value;
+  },
+
+  async updateSystemConfig(key: string, value: string) {
+    const { error } = await supabase
+      .from('system_config')
+      .upsert({ key, value });
+      
+    if (error) throw error;
+  },
+
   // --- CUSTOM TEACHER AUTH (No Supabase Auth) ---
 
   async teacherLogin(username: string, password: string): Promise<Teacher> {

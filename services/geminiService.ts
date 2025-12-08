@@ -1,139 +1,138 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
+import { dataService } from "./dataService";
 
-let _cachedClient: GoogleGenAI | null = null;
+// 阿里云配置 
+// 策略调整: qwen-max 太慢会导致 CORS 代理 504 超时。
+// 改用 qwen-plus (速度快且质量高)，并做降级处理。
+const MODEL_MAIN = "qwen-plus"; 
+const MODEL_FAST = "qwen-turbo"; 
+const ALIYUN_MODEL_IMAGE = "wanx-v1";
 
-// 使用稳定版模型，防止 404 错误
-const MODEL_NAME = "gemini-1.5-flash";
-// 图片生成仍尝试使用专用模型，如果您的 Key 不支持，代码会自动降级处理（不生成图片）
-const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
+// CORS 代理列表 (如果一个挂了可以切另一个，这里暂时用最稳的一个)
+const CORS_PROXY = "https://corsproxy.io/?";
+
+let _cachedKey: string | null = null;
 
 export const resetAiClient = () => {
-  _cachedClient = null;
+  _cachedKey = null;
 };
 
-const getAiClient = async (): Promise<GoogleGenAI> => {
-  if (_cachedClient) {
-    return _cachedClient;
+// 获取阿里云 Key (优先查数据库)
+const getAliyunKey = async (): Promise<string> => {
+  if (_cachedKey) return _cachedKey;
+
+  try {
+    const dbKey = await dataService.fetchSystemConfig('ALIYUN_API_KEY');
+    if (dbKey && dbKey.startsWith('sk-')) {
+      _cachedKey = dbKey;
+      console.log("✅ [Aliyun] 使用数据库配置的 Key");
+      return dbKey;
+    }
+  } catch (e) {
+    console.warn("数据库 Key 读取失败");
   }
 
-  let apiKey = "";
+  throw new Error(
+    "未配置阿里云 API Key。\n" +
+    "请点击左下角【系统设置】，输入您的 DashScope Key (sk-开头)。\n" +
+    "申请地址: https://bailian.console.aliyun.com/"
+  );
+};
+
+// 核心调用函数 (包含重试机制)
+const callDashScope = async (messages: any[], useJsonMode: boolean = false): Promise<string> => {
+  const apiKey = await getAliyunKey();
   
-  // 1. 优先读取 Vite 注入的变量 (适用于 Vercel 部署的前端项目)
-  // Vite 默认只暴露以 VITE_ 开头的环境变量
-  // @ts-ignore
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
-    // @ts-ignore
-    apiKey = import.meta.env.VITE_API_KEY;
-  } 
-  // 2. 兼容 Node 环境或旧有的 process.env 配置 (兜底)
-  else if (typeof process !== 'undefined' && process.env && process.env.VITE_API_KEY) {
-    apiKey = process.env.VITE_API_KEY;
-  }
+  // 内部函数：发送单次请求
+  const sendRequest = async (model: string) => {
+    const payload: any = {
+      model: model,
+      input: { messages },
+      parameters: {
+        result_format: "message",
+        // 如果需要 JSON，强制模型输出 JSON 格式
+        enable_search: false // 关闭联网搜索以提高速度
+      }
+    };
 
-  // 3. 最后的尝试：检查是否有未带 VITE_ 前缀的 API_KEY
-  if (!apiKey && typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-     apiKey = process.env.API_KEY;
-  }
+    const targetUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
+    const proxyUrl = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
 
-  // 严格校验
-  if (!apiKey || apiKey.length < 10) {
-    console.error("❌ Critical Error: API Key is missing.");
-    throw new Error(
-      "API Key 未配置或无效。\n\n" +
-      "请在 Vercel 环境变量中设置 VITE_API_KEY 并重新部署。\n" +
-      "(注意：变量名必须严格为 'VITE_API_KEY'，否则前端代码无法读取)"
-    );
-  }
+    console.log(`🚀 AI Request: ${model} ...`);
 
-  _cachedClient = new GoogleGenAI({ apiKey: apiKey });
-  return _cachedClient;
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      // 处理 CORS 代理特有的 504 错误
+      if (response.status === 504) {
+        throw new Error("TIMEOUT");
+      }
+      throw new Error(`Aliyun Error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    if (!data.output || !data.output.choices || data.output.choices.length === 0) {
+        throw new Error("Empty Response");
+    }
+    return data.output.choices[0].message.content;
+  };
+
+  try {
+    // 1. 尝试使用主力模型 (Plus)
+    return await sendRequest(MODEL_MAIN);
+  } catch (error: any) {
+    // 2. 如果超时 (TIMEOUT) 或其他网络错误，降级到极速模型 (Turbo)
+    if (error.message === "TIMEOUT" || error.message.includes("504") || error.message.includes("Failed to fetch")) {
+        console.warn(`⚠️ ${MODEL_MAIN} 超时，正在降级到 ${MODEL_FAST} 重试...`);
+        try {
+            return await sendRequest(MODEL_FAST);
+        } catch (retryError: any) {
+            throw new Error(`AI 生成失败: 网络连接不稳定 (${retryError.message})`);
+        }
+    }
+    throw error;
+  }
 };
 
-const handleGeminiError = (error: any, context: string) => {
-  console.error(`Gemini Error [${context}]:`, error);
-  const msg = (error.message || '').toLowerCase();
+// 强力 JSON 解析器
+const extractJson = (text: string): any => {
+  let jsonString = text.trim();
+  const match = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
+  if (match) jsonString = match[1];
   
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('too many requests')) {
-    throw new Error("AI 服务繁忙 (429): API 调用次数超限，请稍后重试。");
+  // 修复常见的 JSON 结尾错误
+  const firstOpen = jsonString.indexOf('{');
+  const firstArr = jsonString.indexOf('[');
+  
+  // 确定是对象还是数组
+  const isArray = firstArr !== -1 && (firstOpen === -1 || firstArr < firstOpen);
+  
+  if (isArray) {
+      const lastArr = jsonString.lastIndexOf(']');
+      if (firstArr !== -1 && lastArr !== -1) jsonString = jsonString.substring(firstArr, lastArr + 1);
+  } else {
+      const lastOpen = jsonString.lastIndexOf('}');
+      if (firstOpen !== -1 && lastOpen !== -1) jsonString = jsonString.substring(firstOpen, lastOpen + 1);
   }
-  if (msg.includes('401') || msg.includes('key') || msg.includes('invalid')) {
-    throw new Error("API Key 无效 (401): 请检查 Vercel 环境变量 VITE_API_KEY 是否配置正确。");
-  }
-  if (msg.includes('404') || msg.includes('not found')) {
-    throw new Error(`模型不可用 (404): 当前 Key 可能不支持 ${MODEL_NAME}，或模型未对该区域开放。`);
-  }
-  throw new Error(`AI 请求失败: ${msg.substring(0, 80)}...`);
-};
 
-// --- Schemas ---
-
-const gradingSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    score: { type: Type.NUMBER, description: "Score from 0 to 100" },
-    feedback: { type: Type.STRING, description: "Constructive feedback in Chinese" },
-  },
-  required: ["score", "feedback"],
-};
-
-const lessonPlanSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    topic: { type: Type.STRING },
-    textbookContext: { type: Type.STRING },
-    objectives: { type: Type.ARRAY, items: { type: Type.STRING } },
-    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-    process: { 
-      type: Type.ARRAY, 
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          phase: { type: Type.STRING },
-          duration: { type: Type.STRING },
-          activity: { type: Type.STRING },
-        },
-        required: ["phase", "duration", "activity"]
-      } 
-    },
-    blackboard: { type: Type.ARRAY, items: { type: Type.STRING } },
-    homework: { type: Type.STRING },
-  },
-  required: ["topic", "objectives", "keyPoints", "process", "blackboard", "homework"],
-};
-
-const slideSchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      layout: { type: Type.STRING, enum: ["TITLE", "CONTENT", "TWO_COLUMN", "CONCLUSION"] },
-      title: { type: Type.STRING },
-      content: { type: Type.ARRAY, items: { type: Type.STRING } },
-      notes: { type: Type.STRING },
-      visualPrompt: { type: Type.STRING, description: "English prompt for image generation" },
-    },
-    required: ["layout", "title", "content", "visualPrompt"]
+  try {
+    return JSON.parse(jsonString);
+  } catch (e) {
+    console.error("JSON Parse Error", text);
+    throw new Error("AI 生成数据格式解析失败，请重试");
   }
 };
 
-const quizSchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      difficulty: { type: Type.STRING, enum: ["基础", "进阶", "挑战"] },
-      question: { type: Type.STRING },
-      options: { type: Type.ARRAY, items: { type: Type.STRING } },
-      correctAnswer: { type: Type.NUMBER, description: "Index of correct option (0-3)" },
-      explanation: { type: Type.STRING },
-    },
-    required: ["difficulty", "question", "options", "correctAnswer", "explanation"]
-  }
-};
-
-// --- API Functions ---
+// --- 业务功能 ---
 
 export const generateGradingSuggestion = async (
   subject: Subject,
@@ -141,32 +140,18 @@ export const generateGradingSuggestion = async (
   content: string
 ): Promise<{ score: number; feedback: string }> => {
   try {
-    const ai = await getAiClient();
     const prompt = `
-      Task: Grade this homework for a primary school ${subject} student named ${studentName}.
-      Homework Content: "${content}"
-      Requirements: Give a score (0-100) and encouraging feedback in Chinese.
+      任务：批改小学${subject}作业。
+      学生：${studentName}
+      内容：${content}
+      要求：JSON格式返回 {"score": number, "feedback": "string"}
     `;
-    
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: gradingSchema 
-      }
-    });
-
-    // Google GenAI SDK v1.0+ 使用 .text 属性 (getter)
-    const text = response.text || "{}";
-    const result = JSON.parse(text);
-    return {
-      score: result.score || 85,
-      feedback: result.feedback || "作业已收到，继续努力！"
-    };
+    const text = await callDashScope([{ role: "user", content: prompt }]);
+    const res = extractJson(text);
+    return { score: res.score || 85, feedback: res.feedback || "批改完成" };
   } catch (error) {
-    handleGeminiError(error, 'Grading');
-    return { score: 0, feedback: "AI 批改服务暂时不可用" };
+    console.error(error);
+    return { score: 0, feedback: "AI 服务暂时不可用" };
   }
 };
 
@@ -175,21 +160,12 @@ export const generateStudentAnalysis = async (
   subject: Subject,
   recentScores: number[]
 ): Promise<string> => {
-  try {
-    const ai = await getAiClient();
-    const prompt = `
-      分析学生 ${studentName} (${subject}) 的近期成绩: ${recentScores.join(', ')}。
-      生成"成绩走势"、"薄弱点"、"3条建议"。
-    `;
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-    });
-    return response.text || "暂无分析数据。";
-  } catch (error: any) {
-    handleGeminiError(error, 'Analysis');
-    return "分析报告生成失败";
-  }
+  const prompt = `
+    请分析学生${studentName}(${subject})的近期成绩:${recentScores.join(',')}。
+    请给出：1.成绩趋势 2.能力画像 3.提升建议。
+    Markdown格式，语气专业亲切。
+  `;
+  return await callDashScope([{ role: "user", content: prompt }]);
 };
 
 export const generateLessonPlan = async (
@@ -197,57 +173,30 @@ export const generateLessonPlan = async (
   subject: string,
   textbookContext?: string
 ): Promise<LessonPlan | null> => {
-  try {
-    const ai = await getAiClient();
-    const contextStr = textbookContext ? `教材内容参考: ${textbookContext}` : "基于通用小学教材标准";
-    const prompt = `
-      Role: Expert Primary School ${subject} Teacher.
-      Task: Create a detailed lesson plan for "${topic}".
-      Context: ${contextStr}
-    `;
-
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: lessonPlanSchema
-      }
-    });
-
-    const text = response.text || "{}";
-    return JSON.parse(text);
-  } catch (error) {
-    handleGeminiError(error, 'LessonPlan');
-    return null;
-  }
-};
-
-export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
-  try {
-    const ai = await getAiClient();
-    // 尝试使用专用图像模型
-    // 注意：如果您的 Key 无法访问 gemini-2.5-flash-image，此处会报错并被捕获，不影响主流程
-    const response = await ai.models.generateContent({
-      model: IMAGE_MODEL_NAME,
-      contents: {
-        parts: [{ text: prompt + " high quality, educational illustration, 4k, clean style, vector art style, soft colors, minimalist background" }]
-      }
-    });
-
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.data) {
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-      }
+  const context = textbookContext || "通用教材";
+  const prompt = `
+    角色：小学${subject}特级教师。
+    任务：为"${topic}"设计教案。
+    背景：${context}。
+    要求：
+    1. 环节完整(导入、新授、练习、总结)。
+    2. 严格输出 JSON 格式。
+    
+    JSON结构示例:
+    {
+      "topic": "${topic}",
+      "textbookContext": "...",
+      "objectives": ["目标1", "目标2"],
+      "keyPoints": ["重点1", "难点1"],
+      "process": [
+         {"phase": "一、导入", "duration": "5分钟", "activity": "..."}
+      ],
+      "blackboard": ["板书内容"],
+      "homework": "..."
     }
-    return null;
-  } catch (error) {
-    // 默默失败，不打断 PPT 生成流程
-    console.warn("Image Gen Error (Non-fatal): Model likely not available.", error);
-    return null;
-  }
+  `;
+  const text = await callDashScope([{ role: "user", content: prompt }]);
+  return extractJson(text);
 };
 
 export const generatePPTSlides = async (
@@ -255,56 +204,100 @@ export const generatePPTSlides = async (
   objectives: string[],
   subject: string
 ): Promise<PresentationSlide[]> => {
-  try {
-    const ai = await getAiClient();
-    const prompt = `
-      Design an 8-slide PowerPoint outline for Primary School ${subject}.
-      Topic: "${topic}"
-      Learning Objectives: ${objectives.join(', ')}
-      Requirements: 1. Slide 1 TITLE, Last CONCLUSION. "visualPrompt" for AI image gen. Language: Chinese.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: slideSchema
+  const prompt = `
+    任务：为"${topic}"生成PPT大纲(6-8页)。
+    要求：JSON数组格式。
+    
+    结构示例:
+    [
+      {
+        "layout": "TITLE",
+        "title": "${topic}",
+        "content": ["副标题"],
+        "notes": "...",
+        "visualPrompt": "English prompt for cover image"
+      },
+      {
+        "layout": "CONTENT",
+        "title": "...",
+        "content": ["..."],
+        "notes": "...",
+        "visualPrompt": "English prompt"
       }
-    });
-    return JSON.parse(response.text || "[]");
-  } catch (error) {
-    handleGeminiError(error, 'PPT');
-    return [];
-  }
+    ]
+  `;
+  const text = await callDashScope([{ role: "user", content: prompt }]);
+  return extractJson(text);
 };
 
 export const generateQuiz = async (
   topic: string,
   keyPoints: string[]
 ): Promise<QuizQuestion[]> => {
-  try {
-    const ai = await getAiClient();
-    const prompt = `
-      Topic: ${topic}
-      Key Concepts: ${keyPoints.join(', ')}
-      Task: Generate 10 quiz questions (3 Easy, 4 Medium, 3 Hard).
-      Format: JSON. Language: Chinese.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: quizSchema
-      }
-    });
+  const prompt = `
+    任务：为"${topic}"出10道单选题。
+    要求：JSON数组。
     
-    const data = JSON.parse(response.text || "[]");
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    handleGeminiError(error, 'Quiz');
-    return [];
+    结构示例:
+    [
+      {
+        "difficulty": "基础",
+        "question": "...",
+        "options": ["A","B","C","D"],
+        "correctAnswer": 0,
+        "explanation": "..."
+      }
+    ]
+  `;
+  const text = await callDashScope([{ role: "user", content: prompt }]);
+  return extractJson(text);
+};
+
+export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
+  try {
+    const apiKey = await getAliyunKey();
+    // 生图接口 (Wanx) 通常比较快，不太容易 504，但我们也加上 try catch
+    const submitUrl = `${CORS_PROXY}${encodeURIComponent("https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis")}`;
+    
+    const response = await fetch(submitUrl, {
+      method: "POST",
+      headers: {
+        "X-DashScope-WorkSpace": "model", 
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: ALIYUN_MODEL_IMAGE,
+        input: { prompt: prompt + ", cartoon style, simple, educational" },
+        parameters: { size: "1024*1024", n: 1 }
+      })
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.output && data.output.task_id) {
+       return await pollImageTask(data.output.task_id, apiKey);
+    }
+    return null;
+  } catch (e) {
+    console.error("Image Gen Error", e);
+    return null; 
   }
+};
+
+const pollImageTask = async (taskId: string, apiKey: string): Promise<string | null> => {
+  const checkUrl = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+  const proxyUrl = `${CORS_PROXY}${encodeURIComponent(checkUrl)}`;
+
+  for (let i = 0; i < 20; i++) { // 轮询 20 次
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+        const response = await fetch(proxyUrl, { headers: { "Authorization": `Bearer ${apiKey}` } });
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (data.output && data.output.task_status === 'SUCCEEDED') return data.output.results[0].url; 
+        if (data.output && data.output.task_status === 'FAILED') return null;
+    } catch(e) {}
+  }
+  return null;
 };
