@@ -19,28 +19,30 @@ const getAiClient = async (): Promise<GoogleGenAI> => {
 
   let apiKey = "";
   
-  // 1. 优先读取 Vite 注入的变量 (本地开发 & Vercel 前端)
-  // Vercel 环境变量必须以 VITE_ 开头才能暴露给前端
+  // 1. 优先读取 Vite 注入的变量 (适用于 Vercel 部署的前端项目)
+  // Vite 默认只暴露以 VITE_ 开头的环境变量
   // @ts-ignore
-  if (import.meta.env && import.meta.env.VITE_API_KEY) {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
     // @ts-ignore
     apiKey = import.meta.env.VITE_API_KEY;
   } 
-  // 2. 兼容 Node 环境或旧配置 (作为兜底)
+  // 2. 兼容 Node 环境或旧有的 process.env 配置 (兜底)
   else if (typeof process !== 'undefined' && process.env && process.env.VITE_API_KEY) {
     apiKey = process.env.VITE_API_KEY;
+  }
+
+  // 3. 最后的尝试：检查是否有未带 VITE_ 前缀的 API_KEY (通常在 Vite 前端中读不到，除非配置了 define)
+  if (!apiKey && typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+     apiKey = process.env.API_KEY;
   }
 
   // 严格校验
   if (!apiKey || apiKey.length < 10) {
     console.error("❌ Critical Error: API Key is missing.");
     throw new Error(
-      "系统未检测到有效的 API Key。\n\n" +
-      "【Vercel 部署修复指南】\n" +
-      "1. 进入 Vercel 项目设置 -> Environment Variables\n" +
-      "2. 添加变量名: VITE_API_KEY (注意必须带 VITE_ 前缀！)\n" +
-      "3. 变量值: 您的 AIza 开头的密钥\n" +
-      "4. 保存后，务必去 Deployments 页面点击 'Redeploy' (重新部署) 才能生效！"
+      "API Key 未配置或无效。\n\n" +
+      "请在 Vercel 环境变量中设置 VITE_API_KEY 并重新部署。\n" +
+      "(注意：变量名必须严格为 'VITE_API_KEY'，否则前端代码无法读取)"
     );
   }
 
