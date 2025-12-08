@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Teacher, ViewState, Homework, LessonPlan, Student, Exam, Textbook, PresentationSlide, QuizQuestion, Subject } from '../types';
-import { generateGradingSuggestion, generateStudentAnalysis, generateLessonPlan, generatePPTSlides, generateQuiz, generateEducationalImage } from '../services/geminiService';
+import { generateGradingSuggestion, generateStudentAnalysis, generateLessonPlan, generatePPTSlides, generateQuiz, generateEducationalImage, resetAiClient } from '../services/geminiService';
 import { dataService } from '../services/dataService';
 import { 
   LayoutDashboard, PenTool, TrendingUp, LogOut, 
@@ -9,7 +9,7 @@ import {
   Loader2, Sparkles, CheckCircle, Clock, ChevronRight, ChevronDown,
   FileText, CloudUpload, Image as ImageIcon, X, CheckSquare, Search, Camera,
   FileSpreadsheet, ArrowDownCircle, AlertCircle, Book, FileCheck, Play, Download, BrainCircuit,
-  Palette, Wand2, Settings, Key, Database
+  Palette, Wand2, Settings, Key, Database, Save
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PptxGenJS from 'pptxgenjs';
@@ -164,6 +164,11 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // Settings Modal
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
+
   // Teacher Profile
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
 
@@ -229,6 +234,10 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             const tb = await dataService.fetchTextbooks(teacher.id);
             setTextbooks(tb);
             
+            // Try load key to show in settings
+            const currentKey = await dataService.fetchSystemConfig('GEMINI_API_KEY');
+            if(currentKey) setApiKeyInput(currentKey);
+
         } catch (error) {
             console.error("Failed load", error);
         } finally {
@@ -237,6 +246,24 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     }
     loadData();
   }, [teacher.id]);
+
+  const handleSaveApiKey = async () => {
+    if(!apiKeyInput.startsWith("AIza")) {
+        alert("无效的 Key 格式。Google API Key 通常以 'AIza' 开头。");
+        return;
+    }
+    setSavingKey(true);
+    try {
+        await dataService.updateSystemConfig('GEMINI_API_KEY', apiKeyInput.trim());
+        resetAiClient(); // Clear cache to force reload
+        alert("✅ 系统配置已更新！数据库已保存新 Key。");
+        setShowSettings(false);
+    } catch(e: any) {
+        alert("保存失败: " + e.message);
+    } finally {
+        setSavingKey(false);
+    }
+  };
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -351,25 +378,28 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     const student = students.find(s => s.id === hw.studentId);
     if (!student) { setGradingLoading(false); return; }
     
-    const result = await generateGradingSuggestion(teacher.subject, student.name, hw.content);
-    
-    // Check if result indicates error
-    if (result.score === 0 && result.feedback.includes("配置")) {
-        alert(result.feedback); // Show error to user
+    try {
+        const result = await generateGradingSuggestion(teacher.subject, student.name, hw.content);
+        const updatedHw = { ...hw, status: 'graded' as const, score: result.score, feedback: result.feedback, aiAnalysis: "AI 自动批改完成" };
+        setHomeworkList(prev => prev.map(h => h.id === hw.id ? updatedHw : h));
+        await dataService.updateHomework(hw.id, updatedHw);
+    } catch (e: any) {
+        alert(e.message);
+    } finally {
+        setGradingLoading(false);
     }
-
-    const updatedHw = { ...hw, status: 'graded' as const, score: result.score, feedback: result.feedback, aiAnalysis: "AI 自动批改完成" };
-    setHomeworkList(prev => prev.map(h => h.id === hw.id ? updatedHw : h));
-    setGradingLoading(false);
-    await dataService.updateHomework(hw.id, updatedHw);
   };
 
   const handleAnalysis = async () => {
     setAnalysisLoading(true);
     const student = students.find(s => s.id === selectedStudentId);
     if (student) {
-      const result = await generateStudentAnalysis(student.name, teacher.subject, student.recentScores);
-      setAnalysisResult(result);
+      try {
+        const result = await generateStudentAnalysis(student.name, teacher.subject, student.recentScores);
+        setAnalysisResult(result);
+      } catch (e: any) {
+          alert(e.message);
+      }
     }
     setAnalysisLoading(false);
   };
@@ -386,7 +416,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             setLessonPlan(plan);
             await dataService.createLessonPlan(teacher.id, plan);
         } else {
-            alert("生成失败，请稍后重试。");
+            // Error is handled in geminiService but might return null
         }
     } catch (e: any) {
         alert("生成出错: " + e.message);
@@ -566,6 +596,10 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
         </div>
 
         <div className="mt-auto p-6 border-t border-white/5 space-y-2">
+           <button onClick={() => setShowSettings(true)} className="flex items-center space-x-3 text-slate-400 hover:text-white transition-colors w-full px-4 py-3 rounded-xl hover:bg-white/5 group">
+             <Settings className="w-5 h-5 group-hover:rotate-45 transition-transform" />
+             <span className="font-bold">系统设置</span>
+           </button>
            <button onClick={onLogout} className="flex items-center space-x-3 text-slate-500 hover:text-red-400 transition-colors w-full px-4 py-3 rounded-xl hover:bg-red-500/5 group">
              <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
              <span className="font-bold">退出系统</span>
@@ -1038,7 +1072,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                          <div className="bg-white/40 backdrop-blur-xl border border-white/50 p-10 rounded-3xl shadow-2xl">
                                              <h1 className="text-5xl font-black text-slate-900 mb-4 tracking-tight drop-shadow-sm">{slides[currentSlideIndex].title}</h1>
                                              <div className="w-20 h-1 bg-blue-600 mx-auto rounded-full mb-6"></div>
-                                             <p className="text-xl text-slate-600 font-bold">主讲人：{teacher.name}</p>
+                                             <p className="text-xl text-slate-600 font-bold">主讲人：${teacher.name}</p>
                                          </div>
                                     </div>
                                 ) : (
@@ -1105,6 +1139,65 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
               </div>
           </div>
       )}
+
+      {/* Settings Modal - System Configuration */}
+      {showSettings && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+               <div className="bg-[#1e293b] w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl p-8 animate-in zoom-in-95">
+                   <div className="flex justify-between items-start mb-6">
+                       <div>
+                           <h2 className="text-2xl font-black text-white flex items-center gap-2"><Database className="w-6 h-6 text-blue-500"/> 系统数据库配置</h2>
+                           <p className="text-slate-400 text-sm mt-1">直接管理 system_config 表中的全局参数</p>
+                       </div>
+                       <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-white transition-colors"><X className="w-6 h-6"/></button>
+                   </div>
+
+                   <div className="space-y-6">
+                       <div className="space-y-2">
+                           <label className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-2">
+                               <Key className="w-3 h-3"/> Google Gemini API Key
+                           </label>
+                           <div className="relative group">
+                               <input 
+                                   type="text" 
+                                   value={apiKeyInput}
+                                   onChange={e => setApiKeyInput(e.target.value)}
+                                   placeholder="输入以 AIza 开头的密钥" 
+                                   className="w-full pl-4 pr-12 py-4 bg-black/30 border border-white/10 rounded-xl text-white font-mono text-sm focus:border-blue-500 focus:outline-none focus:bg-black/50 transition-all"
+                               />
+                               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500">
+                                   {apiKeyInput.length > 20 ? <CheckCircle className="w-4 h-4 text-green-500"/> : <AlertCircle className="w-4 h-4"/>}
+                               </div>
+                           </div>
+                           <p className="text-xs text-slate-500">
+                               该 Key 将被加密存储在 Supabase 数据库中，用于所有 AI 生成功能。
+                           </p>
+                       </div>
+
+                       <div className="bg-blue-900/20 rounded-xl p-4 border border-blue-500/20 flex gap-3">
+                           <div className="shrink-0 pt-1"><AlertCircle className="w-4 h-4 text-blue-400"/></div>
+                           <div className="text-xs text-blue-200/80 leading-relaxed">
+                               <p className="font-bold text-blue-300 mb-1">故障排除指南：</p>
+                               如果遇到 "API Key 无效" 或 401 错误，请确保复制的 Key 没有前后空格。保存后，系统会自动重置连接。
+                           </div>
+                       </div>
+                   </div>
+
+                   <div className="mt-8 flex justify-end gap-3">
+                       <button onClick={() => setShowSettings(false)} className="px-5 py-3 rounded-xl text-slate-400 font-bold hover:bg-white/5 transition-colors">取消</button>
+                       <button 
+                           onClick={handleSaveApiKey} 
+                           disabled={savingKey || apiKeyInput.length < 20}
+                           className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black shadow-lg shadow-blue-900/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                       >
+                           {savingKey ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
+                           保存到数据库
+                       </button>
+                   </div>
+               </div>
+          </div>
+      )}
+
     </div>
   );
 };

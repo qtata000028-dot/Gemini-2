@@ -8,50 +8,49 @@ let _cachedKey: string | null = null;
 
 // 清除缓存（当用户在 UI 更新 Key 后调用）
 export const resetAiClient = () => {
-  console.log("🔄 重置 AI 客户端缓存...");
+  console.log("🔄 重置 AI 客户端缓存，下次请求将重新读取数据库...");
   _cachedClient = null;
   _cachedKey = null;
 };
 
 // Async initializer for the AI client
 const getAiClient = async (): Promise<GoogleGenAI> => {
-  // 如果已有缓存，直接返回
+  // 如果已有缓存，直接返回。注意：如果用户在 UI 重置了 key，_cachedClient 会变成 null，从而触发重新读取。
   if (_cachedClient && _cachedKey) {
     return _cachedClient;
   }
 
-  console.log("🔌 正在初始化 AI 客户端...");
+  console.log("🔌 正在连接 AI 服务，读取数据库配置...");
   let finalKey = null;
 
-  // 1. 【必须】优先尝试从数据库 System Config 表读取
-  // 这确保了哪怕 Vercel 环境变量没生效，或者 HTML 里有脏数据，数据库永远是“真理”
+  // 1. 【唯一真理】从数据库 System Config 表读取
   try {
     const dbKey = await dataService.fetchSystemConfig('GEMINI_API_KEY');
-    if (dbKey && dbKey.length > 20) { // 简单校验长度
-      console.log("✅ 成功从数据库获取 API Key");
-      finalKey = dbKey;
+    if (dbKey && dbKey.length > 10) { 
+      // 关键修复：去除可能的空格和换行符
+      finalKey = dbKey.trim();
+      console.log(`✅ 成功从数据库获取 API Key (Key末尾: ...${finalKey.slice(-4)})`);
     } else {
-      console.log("⚠️ 数据库中未找到有效 Key (system_config 表)");
+      console.log("⚠️ 数据库 system_config 表中未找到 'GEMINI_API_KEY'，或值为空。");
     }
   } catch (e) {
     console.error("❌ 读取数据库配置失败:", e);
   }
 
-  // 2. 如果数据库没有，尝试读取环境变量 (Vercel 后台配置)
+  // 2. 如果数据库没有，再尝试读取环境变量 (Vercel) - 但不作为主要依赖
   if (!finalKey) {
      if (typeof process !== 'undefined' && process.env?.API_KEY && process.env.API_KEY.length > 20) {
        console.log("✅ 使用 process.env.API_KEY");
-       finalKey = process.env.API_KEY;
+       finalKey = process.env.API_KEY.trim();
      } else if (typeof window !== 'undefined' && (window as any).process?.env?.API_KEY && (window as any).process.env.API_KEY.length > 20) {
        console.log("✅ 使用 window.process.env.API_KEY");
-       finalKey = (window as any).process.env.API_KEY;
+       finalKey = (window as any).process.env.API_KEY.trim();
      }
   }
 
-  // 3. 严禁使用硬编码备用 Key
   if (!finalKey) {
      console.error("❌ 致命错误: 未找到任何可用的 API Key");
-     throw new Error("API Key 未配置！请点击左下角【设置】图标，输入您的 Google Gemini API Key。");
+     throw new Error("系统未配置 AI Key！请点击左下角【设置】图标，将您的 Google Gemini API Key 存入数据库。");
   }
 
   _cachedKey = finalKey;
@@ -61,17 +60,19 @@ const getAiClient = async (): Promise<GoogleGenAI> => {
 
 const handleGeminiError = (error: any, context: string) => {
   console.error(`Gemini Error [${context}]:`, error);
-  const msg = error.message || '';
-  if (msg.includes('429') || msg.includes('Too Many Requests')) {
-    throw new Error("AI 服务繁忙 (429): 您的 Key 额度已耗尽，请更换 Key 或稍后重试。");
+  const msg = (error.message || '').toLowerCase();
+  
+  if (msg.includes('429') || msg.includes('too many requests')) {
+    throw new Error("AI 服务繁忙 (429): Key 额度已耗尽。请在设置中更换新的 Key。");
   }
-  if (msg.includes('401') || msg.includes('API key') || msg.includes('invalid')) {
-    throw new Error("API Key 无效或过期，请在设置中重新配置。");
+  if (msg.includes('401') || msg.includes('api key') || msg.includes('invalid')) {
+    // 这里的提示更明确，告诉用户数据库里的 key 可能是错的
+    throw new Error("API Key 无效 (401)。请检查设置中的 Key 是否有多余空格或已过期。");
   }
   if (msg.includes('403')) {
-      throw new Error("API Key 权限不足 (403)，请检查您的 Google Cloud 地区或计费设置。");
+      throw new Error("API Key 权限不足 (403)。请检查 Google Cloud 计费或地区限制。");
   }
-  throw new Error(`AI 服务请求失败: ${msg.substring(0, 50)}...`);
+  throw new Error(`AI 服务请求失败: ${msg.substring(0, 100)}`);
 };
 
 export const generateGradingSuggestion = async (
@@ -186,7 +187,6 @@ export const generateEducationalImage = async (prompt: string): Promise<string |
     return null;
   } catch (error) {
     console.warn("Image Gen Error (Non-fatal):", error);
-    // 图像生成失败不阻断流程，只返回 null
     return null;
   }
 };

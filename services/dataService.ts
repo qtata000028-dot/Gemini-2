@@ -10,8 +10,6 @@ export const dataService = {
   
   async fetchSystemConfig(keyName: string): Promise<string | null> {
     try {
-      // 尝试从 system_config 表获取配置
-      // SQL Table required: create table system_config (key text primary key, value text);
       const { data, error } = await supabase
         .from('system_config')
         .select('value')
@@ -27,6 +25,14 @@ export const dataService = {
       console.error("System Config Error:", e);
       return null;
     }
+  },
+
+  async updateSystemConfig(keyName: string, value: string): Promise<void> {
+    const { error } = await supabase
+      .from('system_config')
+      .upsert({ key: keyName, value: value }, { onConflict: 'key' });
+    
+    if (error) throw new Error('保存配置失败: ' + error.message);
   },
 
   // --- CUSTOM TEACHER AUTH (No Supabase Auth) ---
@@ -187,39 +193,27 @@ export const dataService = {
 
   async uploadFile(file: File, bucketName: string = 'homeworks', onProgress?: UploadProgressCallback): Promise<string> {
     return new Promise((resolve, reject) => {
-        // 1. 生成唯一文件名 (防止中文乱码，加个时间戳)
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        
-        // 2. 手动拼接 API 地址 (核心步骤!)
-        // .replace(/\/$/, '') 是为了把 URL 末尾可能多余的斜杠去掉，防止拼成 //storage
         const cleanBaseUrl = supabaseUrl.replace(/\/$/, '');
         const url = `${cleanBaseUrl}/storage/v1/object/${bucketName}/${fileName}`;
 
-        // 3. 创建请求对象 (相当于 C# 的 new HttpClient())
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
 
-        // 4. 塞入鉴权头 (相当于 C# client.DefaultRequestHeaders.Add)
-        // 这里的 Key 就是你连数据库用的那个 anon key
         xhr.setRequestHeader('Authorization', `Bearer ${supabaseKey}`);
         xhr.setRequestHeader('apikey', supabaseKey);
-        xhr.setRequestHeader('x-upsert', 'false'); // 不覆盖同名文件
+        xhr.setRequestHeader('x-upsert', 'false');
 
-        // 5. 绑定进度条事件 (SDK 做不到的就在这里!)
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable && onProgress) {
-                // 计算百分比
                 const percent = (event.loaded / event.total) * 100;
-                // 回调给前端界面
                 onProgress('uploading', percent, event.loaded, event.total);
             }
         };
 
-        // 6. 处理结果
         xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
-                // 上传成功了，我们需要自己拼出“公开访问链接”返回给数据库存起来
                 const publicUrl = `${cleanBaseUrl}/storage/v1/object/public/${bucketName}/${fileName}`;
                 console.log("✅ 上传成功:", publicUrl);
                 resolve(publicUrl);
@@ -230,15 +224,11 @@ export const dataService = {
         };
 
         xhr.onerror = () => reject(new Error('网络请求致命错误'));
-
-        // 7. 发射!
         xhr.send(file);
     });
   },
 
   async uploadTextbook(teacherId: string, file: File, onProgress?: UploadProgressCallback): Promise<Textbook> {
-    // Reuse upload for PDF
-    // 'textbooks' matches the bucket name created in SQL
     const url = await this.uploadFile(file, 'textbooks', onProgress);
     const title = file.name.replace(/\.[^/.]+$/, "");
     
@@ -362,7 +352,6 @@ export const dataService = {
     if (error) throw error;
   },
 
-  // --- EXCEL IMPORT ---
   async parseAndSaveExamExcel(buffer: ArrayBuffer, filename: string) {
     const workbook = XLSX.read(buffer, { type: 'array' });
     const firstSheetName = workbook.SheetNames[0];
