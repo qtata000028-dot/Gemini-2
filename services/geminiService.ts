@@ -1,60 +1,37 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
-import { dataService } from "./dataService";
 
 let _cachedClient: GoogleGenAI | null = null;
-let _cachedKey: string | null = null;
 
-// 清除缓存（当用户在 UI 更新 Key 后调用）
+// 清除缓存 (虽然不再支持动态切换，但保留接口以备不时之需)
 export const resetAiClient = () => {
-  console.log("🔄 重置 AI 客户端缓存，下次请求将重新读取数据库...");
   _cachedClient = null;
-  _cachedKey = null;
 };
 
 // Async initializer for the AI client
 const getAiClient = async (): Promise<GoogleGenAI> => {
-  // 如果已有缓存，直接返回。注意：如果用户在 UI 重置了 key，_cachedClient 会变成 null，从而触发重新读取。
-  if (_cachedClient && _cachedKey) {
+  if (_cachedClient) {
     return _cachedClient;
   }
 
-  console.log("🔌 正在连接 AI 服务，读取数据库配置...");
-  let finalKey = null;
+  // 标准化读取 Vercel 环境变量
+  // 注意：在 Vercel 构建过程中，构建工具(Vite/Webpack)会将 process.env.API_KEY 替换为实际的字符串常量
+  const apiKey = process.env.API_KEY ? process.env.API_KEY.trim() : "";
 
-  // 1. 【唯一真理】从数据库 System Config 表读取
-  try {
-    const dbKey = await dataService.fetchSystemConfig('GEMINI_API_KEY');
-    if (dbKey && dbKey.length > 10) { 
-      // 关键修复：去除可能的空格和换行符
-      finalKey = dbKey.trim();
-      console.log(`✅ 成功从数据库获取 API Key (Key末尾: ...${finalKey.slice(-4)})`);
-    } else {
-      console.log("⚠️ 数据库 system_config 表中未找到 'GEMINI_API_KEY'，或值为空。");
-    }
-  } catch (e) {
-    console.error("❌ 读取数据库配置失败:", e);
+  // 严格校验
+  if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
+    console.error("❌ Critical Error: process.env.API_KEY is missing or invalid.");
+    throw new Error(
+      "系统未检测到有效的 API Key。\n\n" +
+      "如果您正在使用 Vercel 部署，请检查以下几点：\n" +
+      "1. 进入项目 Settings > Environment Variables\n" +
+      "2. 确保已添加名为 'API_KEY' 的变量\n" +
+      "3. 添加变量后，务必执行 Redeploy (重新部署) 以便构建生效"
+    );
   }
 
-  // 2. 如果数据库没有，再尝试读取环境变量 (Vercel) - 但不作为主要依赖
-  if (!finalKey) {
-     if (typeof process !== 'undefined' && process.env?.API_KEY && process.env.API_KEY.length > 20) {
-       console.log("✅ 使用 process.env.API_KEY");
-       finalKey = process.env.API_KEY.trim();
-     } else if (typeof window !== 'undefined' && (window as any).process?.env?.API_KEY && (window as any).process.env.API_KEY.length > 20) {
-       console.log("✅ 使用 window.process.env.API_KEY");
-       finalKey = (window as any).process.env.API_KEY.trim();
-     }
-  }
-
-  if (!finalKey) {
-     console.error("❌ 致命错误: 未找到任何可用的 API Key");
-     throw new Error("系统未配置 AI Key！请点击左下角【设置】图标，将您的 Google Gemini API Key 存入数据库。");
-  }
-
-  _cachedKey = finalKey;
-  _cachedClient = new GoogleGenAI({ apiKey: finalKey });
+  _cachedClient = new GoogleGenAI({ apiKey: apiKey });
   return _cachedClient;
 };
 
@@ -63,16 +40,15 @@ const handleGeminiError = (error: any, context: string) => {
   const msg = (error.message || '').toLowerCase();
   
   if (msg.includes('429') || msg.includes('too many requests')) {
-    throw new Error("AI 服务繁忙 (429): Key 额度已耗尽。请在设置中更换新的 Key。");
+    throw new Error("AI 服务繁忙 (429): 当前 Key 的调用额度已耗尽，请稍后再试。");
   }
   if (msg.includes('401') || msg.includes('api key') || msg.includes('invalid')) {
-    // 这里的提示更明确，告诉用户数据库里的 key 可能是错的
-    throw new Error("API Key 无效 (401)。请检查设置中的 Key 是否有多余空格或已过期。");
+    throw new Error("API Key 无效 (401): 请检查 Vercel 环境变量配置是否正确。");
   }
   if (msg.includes('403')) {
-      throw new Error("API Key 权限不足 (403)。请检查 Google Cloud 计费或地区限制。");
+      throw new Error("权限不足 (403): 您的 Key 可能受到地区限制或结算账户异常。");
   }
-  throw new Error(`AI 服务请求失败: ${msg.substring(0, 100)}`);
+  throw new Error(`AI 请求失败: ${msg.substring(0, 80)}...`);
 };
 
 export const generateGradingSuggestion = async (
@@ -101,7 +77,7 @@ export const generateGradingSuggestion = async (
     };
   } catch (error) {
     handleGeminiError(error, 'Grading');
-    return { score: 0, feedback: "AI 批改失败" };
+    return { score: 0, feedback: "AI 批改服务暂时不可用" };
   }
 };
 
@@ -123,7 +99,7 @@ export const generateStudentAnalysis = async (
     return response.text || "暂无分析数据。";
   } catch (error: any) {
     handleGeminiError(error, 'Analysis');
-    return "分析生成失败";
+    return "分析报告生成失败";
   }
 };
 
@@ -173,7 +149,7 @@ export const generateEducationalImage = async (prompt: string): Promise<string |
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: prompt + " high quality, educational illustration, 4k, clean style, vector art style" }]
+        parts: [{ text: prompt + " high quality, educational illustration, 4k, clean style, vector art style, soft colors" }]
       }
     });
 

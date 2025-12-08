@@ -6,35 +6,6 @@ import * as XLSX from 'xlsx';
 export type UploadProgressCallback = (status: 'compressing' | 'uploading', percent: number, loaded: number, total: number) => void;
 
 export const dataService = {
-  // --- SYSTEM CONFIG (New) ---
-  
-  async fetchSystemConfig(keyName: string): Promise<string | null> {
-    try {
-      const { data, error } = await supabase
-        .from('system_config')
-        .select('value')
-        .eq('key', keyName)
-        .maybeSingle();
-      
-      if (error) {
-          console.warn(`Config fetch error for ${keyName}:`, error.message);
-          return null;
-      }
-      return data?.value || null;
-    } catch (e) {
-      console.error("System Config Error:", e);
-      return null;
-    }
-  },
-
-  async updateSystemConfig(keyName: string, value: string): Promise<void> {
-    const { error } = await supabase
-      .from('system_config')
-      .upsert({ key: keyName, value: value }, { onConflict: 'key' });
-    
-    if (error) throw new Error('保存配置失败: ' + error.message);
-  },
-
   // --- CUSTOM TEACHER AUTH (No Supabase Auth) ---
 
   async teacherLogin(username: string, password: string): Promise<Teacher> {
@@ -240,39 +211,6 @@ export const dataService = {
     if (error) throw error;
     
     return { id: data.id, title: data.title, fileUrl: data.file_url, createdAt: data.created_at };
-  },
-
-  async compressImage(file: File): Promise<File> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.src = URL.createObjectURL(file);
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 1920;
-
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject('Canvas error');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        canvas.toBlob((blob) => {
-          if (!blob) return reject('Compression error');
-          resolve(new File([blob], file.name, { type: 'image/jpeg' }));
-        }, 'image/jpeg', 0.7);
-      };
-      img.onerror = reject;
-    });
   },
 
   // --- DASHBOARD DATA ---
