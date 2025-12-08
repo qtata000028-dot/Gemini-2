@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, ErrorInfo, ReactNode, Component } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import StudentDashboard from './components/StudentDashboard';
@@ -8,13 +8,10 @@ import { AlertTriangle } from 'lucide-react';
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(_: Error) {
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
     return { hasError: true };
   }
 
