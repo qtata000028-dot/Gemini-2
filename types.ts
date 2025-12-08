@@ -71,22 +71,22 @@ export interface Textbook {
   createdAt: string;
 }
 
-// New Types for PPT and Quiz
+// Updated Types for High-End PPT and Interactive Quiz
 export interface PresentationSlide {
-  layout: 'TITLE' | 'CONTENT' | 'TWO_COLUMN' | 'CONCLUSION';
+  layout: 'TITLE' | 'SECTION' | 'CONTENT' | 'CONCLUSION'; // Strict layouts for template mapping
   title: string;
+  subtitle?: string; // For title slides
   content: string[]; 
   notes: string; 
-  visualPrompt: string; // 用于生成AI图片的提示词 (英文)
-  backgroundImage?: string; // Base64 string of the generated image
+  visualPrompt?: string; 
 }
 
 export interface QuizQuestion {
   difficulty: '基础' | '进阶' | '挑战';
   question: string;
   options: string[];
-  correctAnswer: number; 
-  explanation: string;
+  correctAnswer: number; // Index 0-3
+  explanation: string; // Detailed analysis for interactive feedback
 }
 
 export interface LessonPlan {

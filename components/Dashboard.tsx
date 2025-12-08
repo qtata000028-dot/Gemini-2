@@ -9,7 +9,7 @@ import {
   Loader2, Sparkles, CheckCircle, Clock, ChevronRight, ChevronDown,
   FileText, CloudUpload, Image as ImageIcon, X, CheckSquare, Search, Camera,
   FileSpreadsheet, ArrowDownCircle, AlertCircle, Book, FileCheck, Play, Download, BrainCircuit,
-  Palette, Wand2, Database, Save, AlertTriangle, Copy, Laptop, Settings, Terminal, Bot
+  Palette, Wand2, Database, Save, AlertTriangle, Copy, Laptop, Settings, Terminal, Bot, Check, HelpCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PptxGenJS from 'pptxgenjs';
@@ -20,7 +20,80 @@ interface DashboardProps {
   onUpdateTeacher: (updates: Partial<Teacher>) => void;
 }
 
-// --- Custom Components ---
+// --- Interactive Quiz Component ---
+
+const InteractiveQuiz = ({ questions }: { questions: QuizQuestion[] }) => {
+    const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+    const [showExplanation, setShowExplanation] = useState<Record<number, boolean>>({});
+
+    const handleSelect = (qIndex: number, optIndex: number) => {
+        if (selectedAnswers[qIndex] !== undefined) return; // Prevent re-answering
+        setSelectedAnswers(prev => ({ ...prev, [qIndex]: optIndex }));
+        setShowExplanation(prev => ({ ...prev, [qIndex]: true }));
+    };
+
+    return (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            {questions.map((q, qIndex) => {
+                const isAnswered = selectedAnswers[qIndex] !== undefined;
+                const isCorrect = selectedAnswers[qIndex] === q.correctAnswer;
+                
+                return (
+                    <div key={qIndex} className="bg-[#1e293b] rounded-2xl p-6 border border-white/10 shadow-lg">
+                        <div className="flex justify-between items-start mb-4">
+                            <span className={`text-xs font-bold px-2 py-1 rounded border ${
+                                q.difficulty === '基础' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                                q.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                                'bg-red-500/10 text-red-400 border-red-500/20'
+                            }`}>{q.difficulty}</span>
+                            <HelpCircle className="w-5 h-5 text-slate-500" />
+                        </div>
+                        <h4 className="text-white font-bold text-lg mb-6">{qIndex + 1}. {q.question}</h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            {q.options.map((opt, optIndex) => {
+                                let btnClass = "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10";
+                                if (isAnswered) {
+                                    if (optIndex === q.correctAnswer) {
+                                        btnClass = "bg-green-500/20 border-green-500 text-green-300 ring-1 ring-green-500";
+                                    } else if (optIndex === selectedAnswers[qIndex]) {
+                                        btnClass = "bg-red-500/20 border-red-500 text-red-300";
+                                    } else {
+                                        btnClass = "opacity-50 border-transparent";
+                                    }
+                                }
+
+                                return (
+                                    <button
+                                        key={optIndex}
+                                        onClick={() => handleSelect(qIndex, optIndex)}
+                                        disabled={isAnswered}
+                                        className={`p-4 rounded-xl border text-left font-medium transition-all duration-200 flex items-center justify-between ${btnClass}`}
+                                    >
+                                        <span>{['A', 'B', 'C', 'D'][optIndex]}. {opt}</span>
+                                        {isAnswered && optIndex === q.correctAnswer && <Check className="w-5 h-5" />}
+                                        {isAnswered && optIndex === selectedAnswers[qIndex] && optIndex !== q.correctAnswer && <X className="w-5 h-5" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {isAnswered && (
+                            <div className={`p-4 rounded-xl border ${isCorrect ? 'bg-green-900/10 border-green-500/20' : 'bg-orange-900/10 border-orange-500/20'} animate-in fade-in`}>
+                                <div className="flex items-center gap-2 mb-2 font-bold">
+                                    {isCorrect ? <span className="text-green-400">🎉 回答正确！</span> : <span className="text-orange-400">💡 难点解析</span>}
+                                </div>
+                                <p className="text-sm text-slate-300 leading-relaxed">{q.explanation}</p>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// ... other existing components like StudentSearch, ThinkingConsole, SmoothLineChart ...
 
 const StudentSearch = ({ 
     students, 
@@ -102,15 +175,10 @@ const ThinkingConsole = ({ content }: { content: string }) => {
 
     return (
         <div className="w-full h-[500px] bg-[#0f172a] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden font-mono text-xs md:text-sm">
-            <div className="px-4 py-2 bg-white/5 border-b border-white/5 flex items-center justify-between">
+            <div className="px-4 py-2 bg-white/5 border-b border-white/5 flex items-center justify-center">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-4 h-4 text-green-400" />
                     <span className="text-slate-400 font-bold">Aliyun Qwen-Max Agent</span>
-                </div>
-                <div className="flex gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50"></div>
                 </div>
             </div>
             <div className="flex-1 p-6 overflow-y-auto custom-scrollbar text-green-400/90 leading-relaxed whitespace-pre-wrap" ref={scrollRef}>
@@ -121,9 +189,7 @@ const ThinkingConsole = ({ content }: { content: string }) => {
     );
 };
 
-// ... SmoothLineChart component remains the same (omitted for brevity, assume exists or imports) ...
 const SmoothLineChart = ({ data }: { data: any[] }) => {
-    // Reuse existing chart code from previous turn
     const scores = data.map(d => d.averageScore || d.score || 0).reverse();
     const max = 100;
     const min = 50; 
@@ -188,7 +254,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  // Assignment & Student Mgmt State (Omitted for brevity, assume same as before)
+  // Assignment & Student Mgmt State
   const [assignTitle, setAssignTitle] = useState('');
   const [assignDesc, setAssignDesc] = useState('');
   const [assignClass, setAssignClass] = useState('三年级二班');
@@ -210,12 +276,12 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [streamingAnalysis, setStreamingAnalysis] = useState(false);
   
-  // Lesson Plan (Streaming & Thinking)
+  // Lesson Plan
   const [lessonTopic, setLessonTopic] = useState('');
   const [selectedTextbookId, setSelectedTextbookId] = useState<string>('');
   const [lessonPlan, setLessonPlan] = useState<LessonPlan | null>(null);
   const [lessonLoading, setLessonLoading] = useState(false);
-  const [thinkingContent, setThinkingContent] = useState(''); // Stores raw streaming text
+  const [thinkingContent, setThinkingContent] = useState(''); 
   const [showThinking, setShowThinking] = useState(false);
   const [uploadingTextbook, setUploadingTextbook] = useState(false);
   const [textbookProgress, setTextbookProgress] = useState<any>(null);
@@ -250,9 +316,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     loadData();
   }, [teacher.id]);
 
-  // ... (Other handlers like handleFileUpload, handleAvatarUpdate, etc. remain the same) ...
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      // Reuse logic from previous turn
       const file = e.target.files?.[0]; if(!file) return;
       setUploadingFile(true); setFileProgress({status:'准备',percent:0,loaded:'0',total:'0'});
       try {
@@ -276,7 +340,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
       setGradingLoading(true); try { const res = await generateGradingSuggestion(teacher.subject, students.find(s=>s.id===hw.studentId)?.name||'', hw.content); setHomeworkList(prev=>prev.map(h=>h.id===hw.id?{...h, status:'graded', score:res.score, feedback:res.feedback}:h)); } catch(e) { alert(e); } finally { setGradingLoading(false); }
   };
 
-  // --- STREAMING ANALYSIS ---
   const handleAnalysis = async () => {
     setAnalysisLoading(true);
     setStreamingAnalysis(true);
@@ -284,7 +347,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     const student = students.find(s => s.id === selectedStudentId);
     if (student) {
       try {
-        // Pass a callback to update state progressively
         await generateStudentAnalysis(student.name, teacher.subject, student.recentScores, (chunk) => {
             setAnalysisResult(chunk);
         });
@@ -296,12 +358,11 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     setStreamingAnalysis(false);
   };
 
-  // --- STREAMING LESSON PLAN ---
   const handleGenerateLesson = async () => {
     if (!lessonTopic) return;
     setLessonLoading(true);
     setShowThinking(true);
-    setThinkingContent(''); // Clear previous thinking
+    setThinkingContent(''); 
     setLessonPlan(null);
     setSlides([]);
     setQuiz([]);
@@ -309,14 +370,12 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     const context = textbooks.find(t => t.id === selectedTextbookId)?.title;
     
     try {
-        // Streaming generation into Thinking Console
         const plan = await generateLessonPlan(lessonTopic, teacher.subject, context, (chunk) => {
             setThinkingContent(chunk);
         });
         if (plan) {
             setLessonPlan(plan);
             await dataService.createLessonPlan(teacher.id, plan);
-            // Hide thinking console after a brief delay to show completion
             setTimeout(() => setShowThinking(false), 800);
         }
     } catch (e: any) {
@@ -326,8 +385,83 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
     }
   };
 
-  // ... (Slides, Quiz, PPT Download handlers remain same) ...
   const handleGenerateSlides = async () => { if(!lessonPlan) return; setGeneratingSlides(true); try { const s = await generatePPTSlides(lessonPlan.topic, lessonPlan.objectives, teacher.subject); setSlides(s); if(s.length>0) setShowSlidePreview(true); } catch(e){console.error(e)} finally {setGeneratingSlides(false);} };
+  
+  // --- High End PPT Export using PptxGenJS ---
+  const handleExportHighEndPPT = () => {
+      if (slides.length === 0) return;
+      const pres = new PptxGenJS();
+      pres.layout = 'LAYOUT_16x9';
+
+      // 1. Define Professional Masters
+      // Master: Title Slide (Dark, Gradient)
+      pres.defineSlideMaster({
+        title: 'MASTER_TITLE',
+        background: { color: '0F172A' }, // Slate 900
+        objects: [
+           { rect: { x: 0, y: 0, w: '100%', h: '100%', fill: { type: 'solid', color: '0F172A' } } },
+           { rect: { x: 0, y: 0, w: 13.4, h: 0.15, fill: { color: 'F97316' } } }, // Orange top bar
+           // Removed unsupported 'circle' object type
+           // To simulate a circle, one would typically use an image or shape if supported by defineSlideMaster objects,
+           // but keeping it simple to satisfy types.
+        ]
+      });
+
+      // Master: Content Slide (Light, Clean)
+      pres.defineSlideMaster({
+        title: 'MASTER_CONTENT',
+        background: { color: 'F8FAFC' }, // Slate 50
+        slideNumber: { x: 12.5, y: 7.2, color: '94A3B8', fontSize: 10 },
+        objects: [
+           { rect: { x: 0.5, y: 0.4, w: 0.8, h: 0.08, fill: { color: 'F97316' } } }, // Title Accent
+           { text: { text: lessonTopic, options: { x: 0.5, y: 7.2, w: 4, h: 0.3, fontSize: 10, color: '94A3B8' } } }, // Footer text
+        ]
+      });
+
+      // Master: Section Slide (Mid-tone)
+      pres.defineSlideMaster({
+        title: 'MASTER_SECTION',
+        background: { color: '1E293B' }, // Slate 800
+        objects: [
+           { rect: { x: 0, y: 3.5, w: '100%', h: 1.5, fill: { color: '0F172A' } } }, // Band
+        ]
+      });
+
+      // 2. Generate Slides based on AI Layout Type
+      slides.forEach((slide) => {
+          if (slide.layout === 'TITLE') {
+              const s = pres.addSlide({ masterName: 'MASTER_TITLE' });
+              s.addText(slide.title, { x: 0.8, y: 2.8, w: 10, fontSize: 44, color: 'FFFFFF', bold: true, fontFace: 'Arial' });
+              if(slide.subtitle) s.addText(slide.subtitle, { x: 0.8, y: 4, w: 10, fontSize: 24, color: 'CBD5E1' });
+              s.addText(`Presented by ${teacher.name}`, { x: 0.8, y: 6, fontSize: 14, color: '64748B' });
+              if(slide.notes) s.addNotes(slide.notes);
+          } 
+          else if (slide.layout === 'SECTION') {
+              const s = pres.addSlide({ masterName: 'MASTER_SECTION' });
+              s.addText(slide.title, { x: 0, y: 3.8, w: '100%', fontSize: 36, color: 'F97316', bold: true, align: 'center' });
+              if(slide.notes) s.addNotes(slide.notes);
+          } 
+          else if (slide.layout === 'CONCLUSION') {
+              const s = pres.addSlide({ masterName: 'MASTER_TITLE' });
+              s.addText(slide.title || '感谢聆听', { x: 0, y: 3, w: '100%', fontSize: 40, color: 'FFFFFF', bold: true, align: 'center' });
+              if(slide.notes) s.addNotes(slide.notes);
+          }
+          else {
+              // Standard Content
+              const s = pres.addSlide({ masterName: 'MASTER_CONTENT' });
+              s.addText(slide.title, { x: 0.5, y: 0.6, w: 10, fontSize: 28, color: '0F172A', bold: true });
+              
+              // Bullet points
+              const bullets = slide.content.map(c => ({ text: c, options: { fontSize: 18, color: '334155', breakLine: true, bullet: { code: '2022' } } }));
+              s.addText(bullets, { x: 0.5, y: 1.6, w: 12, h: 5, lineSpacing: 32, valign: 'top' });
+              
+              if(slide.notes) s.addNotes(slide.notes);
+          }
+      });
+
+      pres.writeFile({ fileName: `${lessonTopic}_教学课件.pptx` });
+  };
+
   const handleGenerateQuiz = async () => { if(!lessonPlan) return; setGeneratingQuiz(true); try { const q = await generateQuiz(lessonPlan.topic, lessonPlan.keyPoints); if(q.length>0) setQuiz(q); } catch(e){console.error(e)} finally {setGeneratingQuiz(false);} };
   const handleExcelUpload = async (e:any) => { const file=e.target.files[0]; if(!file)return; try{ await dataService.parseAndSaveExamExcel(await file.arrayBuffer(), file.name); const d=await dataService.fetchDashboardData(); setExams(d.exams); alert("导入成功"); } catch(e:any){alert(e.message);} };
 
@@ -345,7 +479,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
   return (
     <div className="min-h-screen bg-[#0f172a] text-white flex overflow-hidden font-sans selection:bg-blue-500/30">
       
-      {/* Sidebar (same as before) */}
+      {/* Sidebar */}
       <div className="w-72 relative z-20 flex flex-col border-r border-white/5 bg-[#0f172a]/80 backdrop-blur-xl">
         <div className="p-8">
           <div className="flex items-center space-x-4 mb-10 group cursor-pointer relative">
@@ -386,11 +520,9 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
          </header>
 
          <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-            
-            {/* ... Other Views (Dashboard, Homework, Students, Publish) omitted for brevity as they are unchanged ... */}
+            {/* Dashboard View */}
             {currentView === ViewState.DASHBOARD && (
                <div className="h-full flex flex-col lg:flex-row gap-8">
-                  {/* Left: Exam Archive */}
                   <div className="flex-1 lg:flex-[0.4] flex flex-col gap-6">
                       <div className="p-6 rounded-[2rem] bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group cursor-pointer">
                           <label className="flex flex-col items-center justify-center cursor-pointer">
@@ -411,7 +543,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                           </div>
                       </div>
                   </div>
-                  {/* Right: Chart */}
                   <div className="flex-1 lg:flex-[0.6] flex flex-col gap-6">
                        <div className="flex-1 bg-white/5 border border-white/10 rounded-[2rem] p-8 flex flex-col relative overflow-hidden">
                           <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-400"/> 成绩走势</h3>
@@ -421,7 +552,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                </div>
             )}
 
-            {/* ANALYSIS VIEW (Updated for Streaming) */}
+            {/* Analysis View */}
             {currentView === ViewState.ANALYSIS && (
                  <div className="flex flex-col gap-6 h-full animate-in fade-in">
                      <div className="flex gap-4 items-center bg-white/5 p-4 rounded-2xl border border-white/10">
@@ -450,7 +581,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                  </div>
             )}
 
-            {/* LESSON PREP VIEW (Updated for Thinking Console) */}
+            {/* LESSON PREP VIEW (Updated for Thinking Console & Quiz) */}
             {currentView === ViewState.LESSON_PREP && (
                <div className="h-full flex flex-col lg:flex-row gap-8 animate-in fade-in">
                    <div className="flex-1 lg:flex-[0.35] bg-white/5 border border-white/10 rounded-[2rem] p-6 flex flex-col">
@@ -479,7 +610,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                        </div>
                        
                        <div className="flex-1 bg-white/5 border border-white/10 rounded-[2rem] p-8 overflow-y-auto custom-scrollbar relative">
-                           {/* Thinking Console Mode */}
                            {showThinking ? (
                                <div className="animate-in fade-in zoom-in-95 duration-300">
                                    <div className="mb-4 flex items-center gap-3">
@@ -489,7 +619,6 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                    <ThinkingConsole content={thinkingContent} />
                                </div>
                            ) : lessonPlan ? (
-                               /* Result Card Mode */
                                <div className="prose prose-invert max-w-none animate-in fade-in slide-in-from-bottom-8 duration-500">
                                    <div className="flex justify-between items-start mb-6">
                                        <div>
@@ -509,7 +638,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                        </div>
                                    </div>
                                    
-                                   {/* Render Lesson Plan Content (same as before but richer) */}
+                                   {/* Main Lesson Content */}
                                    <div className="space-y-8">
                                        {/* Objectives */}
                                        <section className="bg-black/20 p-6 rounded-2xl border border-white/5">
@@ -524,7 +653,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                            </ul>
                                        </section>
 
-                                       {/* Process - Verbatim Script */}
+                                       {/* Process */}
                                        <section>
                                            <h3 className="text-lg font-bold text-white border-l-4 border-orange-500 pl-3 mb-4">二、教学过程 (逐字稿)</h3>
                                            <div className="space-y-6">
@@ -546,15 +675,21 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                                             <div className="bg-[#1e293b] p-6 rounded-2xl border-4 border-slate-700 shadow-2xl relative">
                                                 <div className="absolute top-2 right-2 text-slate-600 text-xs font-bold">BLACKBOARD</div>
                                                 <h3 className="text-white font-bold mb-4 flex items-center gap-2"><Palette className="w-4 h-4"/> 板书设计</h3>
-                                                <div className="text-sm text-white font-handwriting whitespace-pre-line leading-loose tracking-wide">
-                                                    {lessonPlan.blackboard.join('\n')}
-                                                </div>
+                                                <div className="text-sm text-white font-handwriting whitespace-pre-line leading-loose tracking-wide">{lessonPlan.blackboard.join('\n')}</div>
                                             </div>
                                             <div className="bg-gradient-to-br from-blue-900/20 to-indigo-900/20 p-6 rounded-2xl border border-blue-500/20">
                                                 <h3 className="text-blue-300 font-bold mb-4 flex items-center gap-2"><FileCheck className="w-4 h-4"/> 作业设计</h3>
                                                 <div className="text-sm text-blue-100 whitespace-pre-line">{lessonPlan.homework}</div>
                                             </div>
                                        </div>
+
+                                       {/* Quiz Section (Restored & Upgraded) */}
+                                       {quiz.length > 0 && (
+                                           <section className="mt-12 pt-8 border-t border-white/10">
+                                               <h3 className="text-2xl font-black text-green-400 mb-6 flex items-center gap-2"><BrainCircuit className="w-6 h-6"/> 课堂互动习题 (Interactive)</h3>
+                                               <InteractiveQuiz questions={quiz} />
+                                           </section>
+                                       )}
                                    </div>
                                </div>
                            ) : (
@@ -568,33 +703,46 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                </div>
             )}
             
-            {/* ... Other Views (Publish, etc.) omitted ... */}
+            {/* ... Other Views ... */}
 
          </main>
       </div>
 
-      {/* ... Settings Modal & PPT Preview omitted for brevity ... */}
-      {/* (Slide Preview logic remains same) */}
+      {/* Slide Preview Modal */}
       {showSlidePreview && slides.length > 0 && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
               <div className="w-full max-w-5xl bg-[#1e293b] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 h-[80vh]">
-                   {/* ... Preview UI ... */}
                    <div className="flex-1 relative bg-black/50 overflow-hidden flex items-center justify-center p-8">
                        <div className="relative w-full max-w-4xl aspect-video bg-white shadow-2xl rounded-lg overflow-hidden flex flex-col p-12">
-                           <h1 className="text-4xl font-black text-slate-900 mb-6">{slides[currentSlideIndex].title}</h1>
-                           <ul className="space-y-4 text-xl text-slate-700 list-disc pl-6">
-                               {slides[currentSlideIndex].content.map((c,i)=><li key={i}>{c}</li>)}
-                           </ul>
+                           {/* Simplified Preview Render */}
+                           {slides[currentSlideIndex].layout === 'TITLE' ? (
+                               <div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white">
+                                   <h1 className="text-4xl font-black mb-4">{slides[currentSlideIndex].title}</h1>
+                                   <p className="text-xl text-slate-300">{slides[currentSlideIndex].subtitle}</p>
+                               </div>
+                           ) : (
+                               <>
+                                   <h1 className="text-4xl font-black text-slate-900 mb-6">{slides[currentSlideIndex].title}</h1>
+                                   <ul className="space-y-4 text-xl text-slate-700 list-disc pl-6">
+                                       {slides[currentSlideIndex].content.map((c,i)=><li key={i}>{c}</li>)}
+                                   </ul>
+                               </>
+                           )}
                            <div className="mt-auto pt-6 border-t border-slate-200">
                                <p className="text-sm text-slate-500 font-mono">SPEAKER NOTES: {slides[currentSlideIndex].notes}</p>
                            </div>
                        </div>
                    </div>
-                   <div className="p-4 bg-white/5 flex justify-between">
-                       <button onClick={()=>setShowSlidePreview(false)} className="px-4 py-2 text-white">Close</button>
-                       <div className="flex gap-2">
-                           <button onClick={()=>setCurrentSlideIndex(Math.max(0,currentSlideIndex-1))} className="px-4 py-2 bg-blue-600 text-white rounded">Prev</button>
-                           <button onClick={()=>setCurrentSlideIndex(Math.min(slides.length-1,currentSlideIndex+1))} className="px-4 py-2 bg-blue-600 text-white rounded">Next</button>
+                   <div className="p-4 bg-white/5 flex justify-between items-center">
+                       <button onClick={()=>setShowSlidePreview(false)} className="px-4 py-2 text-white hover:bg-white/10 rounded-lg transition-colors">关闭预览</button>
+                       <div className="flex gap-4">
+                            <div className="flex gap-2">
+                                <button onClick={()=>setCurrentSlideIndex(Math.max(0,currentSlideIndex-1))} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">上一页</button>
+                                <button onClick={()=>setCurrentSlideIndex(Math.min(slides.length-1,currentSlideIndex+1))} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">下一页</button>
+                            </div>
+                            <button onClick={handleExportHighEndPPT} className="px-6 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-lg shadow-lg hover:shadow-orange-500/20 flex items-center gap-2">
+                                <Download className="w-4 h-4" /> 导出 PPTX 文件
+                            </button>
                        </div>
                    </div>
               </div>

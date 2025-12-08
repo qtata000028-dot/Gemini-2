@@ -67,10 +67,14 @@ const callBackendAI = async (
 
 const extractJson = (text: string): any => {
   let jsonString = text.trim();
+  // Remove markdown code blocks
   jsonString = jsonString.replace(/^```json\s*/i, '').replace(/```$/, '');
   
+  // Try to find the first '{' or '['
   const firstOpen = jsonString.indexOf('{');
   const firstArr = jsonString.indexOf('[');
+  
+  // Determine if it should be an object or array
   const isArray = firstArr !== -1 && (firstOpen === -1 || firstArr < firstOpen);
   
   let startIndex = isArray ? firstArr : firstOpen;
@@ -198,15 +202,36 @@ export const generatePPTSlides = async (
   subject: string
 ): Promise<PresentationSlide[]> => {
   const prompt = `
-    为${subject}课"${topic}"设计一份**TED演讲级别**的 PPT 大纲 (8页)。
-    目标：${objectives.join('; ')}。
+    你是一位顶级 PPT 设计师。请为${subject}课"${topic}"设计一份**TED演讲级别**的 PPT 结构。
     
-    要求：
-    1. **视觉化**：visualPrompt 必须是英文，描述极其详细的画面 (e.g., "A futuristic classroom scene, 3D render, Pixar style")。
-    2. **内容丰富**：content 数组里不要写短语，要写完整的知识点长句。
-    3. **演讲备注**：notes 字段要写给老师看的口语化演讲稿。
+    请严格按照以下 JSON 结构返回 8-10 页幻灯片数据。
+    
+    **布局类型 (layout)** 必须是以下之一:
+    - "TITLE": 封面页，包含大标题和副标题。
+    - "SECTION": 章节过渡页，只有章节标题。
+    - "CONTENT": 标准内容页，包含标题和 3-5 个要点。
+    - "CONCLUSION": 总结页。
 
-    返回 JSON 数组 (PresentationSlide 结构)。
+    **JSON 格式**:
+    [
+      {
+        "layout": "TITLE",
+        "title": "${topic}",
+        "subtitle": "探索${subject}的奥秘",
+        "content": [],
+        "notes": "开场白..."
+      },
+      {
+        "layout": "CONTENT",
+        "title": "页标题",
+        "content": ["要点1：...", "要点2：..."],
+        "notes": "讲解词..."
+      }
+    ]
+
+    要求：
+    1. **内容详实**：content 数组里的每一条必须是完整的长句，不要简单的词组。
+    2. **演讲备注**：notes 字段必须是口语化的逐字稿，方便老师直接念。
   `;
   const text = await callBackendAI([{ role: "user", content: prompt }]);
   return extractJson(text);
@@ -217,12 +242,22 @@ export const generateQuiz = async (
   keyPoints: string[]
 ): Promise<QuizQuestion[]> => {
   const prompt = `
-    为"${topic}"设计 5 道**高信度**的单选题。
+    为"${topic}"设计 5 道**高信度**的单项选择题。
+    
+    JSON 格式要求:
+    [
+      {
+        "difficulty": "基础" | "进阶" | "挑战",
+        "question": "题目内容...",
+        "options": ["选项A", "选项B", "选项C", "选项D"],
+        "correctAnswer": 0, // 0 代表 A, 1 代表 B...
+        "explanation": "详细解析：为什么选A？其他选项错在哪里？考查了什么知识点？"
+      }
+    ]
+
     要求：
     1. 必须包含一道“陷阱题”，考察学生易错点。
-    2. explanation 字段必须详细解释每个选项为什么对/错。
-    
-    返回 QuizQuestion[] JSON。
+    2. **explanation 必须非常详细**，用于学生选错后的辅导。
   `;
   const text = await callBackendAI([{ role: "user", content: prompt }]);
   return extractJson(text);
