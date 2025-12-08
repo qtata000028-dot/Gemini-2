@@ -6,11 +6,14 @@ import StudentDashboard from './components/StudentDashboard';
 import { Teacher, Student, UserRole } from './types';
 import { AlertTriangle } from 'lucide-react';
 
-interface ErrorBoundaryProps { children?: ReactNode; }
+interface ErrorBoundaryProps { children: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   static getDerivedStateFromError(_: Error): ErrorBoundaryState {
     return { hasError: true };
@@ -26,12 +29,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
           <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
           <h1 className="text-2xl font-bold mb-2">系统遇到问题</h1>
-          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg">刷新</button>
+          <p className="text-slate-500 mb-6">我们检测到了一个意外错误。</p>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors">
+            刷新页面重试
+          </button>
         </div>
       );
     }
-    // Cast 'this' to any to avoid TS error "Property 'props' does not exist on type 'ErrorBoundary'"
-    return (this as any).props.children;
+    return this.props.children;
   }
 }
 

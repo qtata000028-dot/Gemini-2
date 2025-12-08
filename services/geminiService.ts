@@ -4,31 +4,31 @@ import { Subject, LessonPlan, PresentationSlide, QuizQuestion } from "../types";
 
 let _cachedClient: GoogleGenAI | null = null;
 
-// 清除缓存
+// 使用 Google 推荐的最新 Flash 模型
+const MODEL_NAME = "gemini-2.5-flash"; 
+const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
+
 export const resetAiClient = () => {
   _cachedClient = null;
 };
 
-// Async initializer for the AI client
 const getAiClient = async (): Promise<GoogleGenAI> => {
   if (_cachedClient) {
     return _cachedClient;
   }
 
-  // 核心修复 1: 适配 Vite 的环境变量标准
-  // Vercel 部署时，请在 Settings -> Environment Variables 中添加 "VITE_API_KEY"
-  // 这样不需要修改 vite.config.ts 也能读取到
   let apiKey = "";
   
-  // 尝试读取 Vite 注入的变量
-  // Use type casting to access .env on import.meta to avoid TS errors
-  const meta = import.meta as any;
-  if (meta && meta.env && meta.env.VITE_API_KEY) {
-    apiKey = meta.env.VITE_API_KEY;
+  // 1. 优先读取 Vite 注入的变量 (本地开发 & Vercel 前端)
+  // Vercel 环境变量必须以 VITE_ 开头才能暴露给前端
+  // @ts-ignore
+  if (import.meta.env && import.meta.env.VITE_API_KEY) {
+    // @ts-ignore
+    apiKey = import.meta.env.VITE_API_KEY;
   } 
-  // 兼容旧的 process.env 写法
-  else if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    apiKey = process.env.API_KEY;
+  // 2. 兼容 Node 环境或旧配置 (作为兜底)
+  else if (typeof process !== 'undefined' && process.env && process.env.VITE_API_KEY) {
+    apiKey = process.env.VITE_API_KEY;
   }
 
   // 严格校验
@@ -38,9 +38,9 @@ const getAiClient = async (): Promise<GoogleGenAI> => {
       "系统未检测到有效的 API Key。\n\n" +
       "【Vercel 部署修复指南】\n" +
       "1. 进入 Vercel 项目设置 -> Environment Variables\n" +
-      "2. 添加变量名: VITE_API_KEY (推荐) 或 API_KEY\n" +
-      "3. 填入您的 Key 值\n" +
-      "4. 保存后，必须点击 Deployments -> Redeploy 才能生效！"
+      "2. 添加变量名: VITE_API_KEY (注意必须带 VITE_ 前缀！)\n" +
+      "3. 变量值: 您的 AIza 开头的密钥\n" +
+      "4. 保存后，务必去 Deployments 页面点击 'Redeploy' (重新部署) 才能生效！"
     );
   }
 
@@ -52,16 +52,19 @@ const handleGeminiError = (error: any, context: string) => {
   console.error(`Gemini Error [${context}]:`, error);
   const msg = (error.message || '').toLowerCase();
   
-  if (msg.includes('429') || msg.includes('too many requests')) {
-    throw new Error("AI 服务繁忙 (429): 请稍后再试 (Public Key 额度耗尽)。");
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('too many requests')) {
+    throw new Error("AI 服务繁忙 (429): API 调用次数超限，请稍后重试。");
   }
-  if (msg.includes('401') || msg.includes('api key') || msg.includes('invalid')) {
-    throw new Error("API Key 无效 (401): 请检查 Vercel 环境变量配置。");
+  if (msg.includes('401') || msg.includes('key') || msg.includes('invalid')) {
+    throw new Error("API Key 无效 (401): 请检查 Vercel 环境变量 VITE_API_KEY 是否配置正确。");
+  }
+  if (msg.includes('404') || msg.includes('not found')) {
+    throw new Error(`模型未找到 (404): 当前区域可能不支持 ${MODEL_NAME}，或 Key 权限不足。`);
   }
   throw new Error(`AI 请求失败: ${msg.substring(0, 80)}...`);
 };
 
-// --- Schemas (核心修复 2: 使用 Schema 强制 JSON 结构) ---
+// --- Schemas ---
 
 const gradingSchema: Schema = {
   type: Type.OBJECT,
@@ -139,14 +142,11 @@ export const generateGradingSuggestion = async (
     const prompt = `
       Task: Grade this homework for a primary school ${subject} student named ${studentName}.
       Homework Content: "${content}"
-      
-      Requirements:
-      1. Give a score (0-100).
-      2. Provide encouraging feedback in Chinese (approx 50 words).
+      Requirements: Give a score (0-100) and encouraging feedback in Chinese.
     `;
     
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: MODEL_NAME,
       contents: prompt,
       config: { 
         responseMimeType: "application/json",
@@ -154,6 +154,7 @@ export const generateGradingSuggestion = async (
       }
     });
 
+    // 注意: @google/genai SDK 使用 .text 属性 (Getter)，而不是方法
     const text = response.text || "{}";
     const result = JSON.parse(text);
     return {
@@ -173,13 +174,12 @@ export const generateStudentAnalysis = async (
 ): Promise<string> => {
   try {
     const ai = await getAiClient();
-    // Analysis is free-form text, no JSON schema needed
     const prompt = `
       分析学生 ${studentName} (${subject}) 的近期成绩: ${recentScores.join(', ')}。
-      生成"成绩走势"、"薄弱点"、"3条建议"。请用加粗作为标题，不要用Markdown标题语法。
+      生成"成绩走势"、"薄弱点"、"3条建议"。
     `;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: MODEL_NAME,
       contents: prompt,
     });
     return response.text || "暂无分析数据。";
@@ -201,18 +201,10 @@ export const generateLessonPlan = async (
       Role: Expert Primary School ${subject} Teacher.
       Task: Create a detailed lesson plan for "${topic}".
       Context: ${contextStr}
-      
-      Requirements:
-      - Objectives: 3 clear goals.
-      - Key Points: 2-3 difficult points.
-      - Process: 4-5 steps with duration and detailed activities.
-      - Blackboard: Layout design points.
-      - Homework: Specific assignment.
-      - Language: Chinese.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: MODEL_NAME,
       contents: prompt,
       config: { 
         responseMimeType: "application/json",
@@ -231,8 +223,9 @@ export const generateLessonPlan = async (
 export const generateEducationalImage = async (prompt: string): Promise<string | null> => {
   try {
     const ai = await getAiClient();
+    // 使用专门的图像模型
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: IMAGE_MODEL_NAME,
       contents: {
         parts: [{ text: prompt + " high quality, educational illustration, 4k, clean style, vector art style, soft colors, minimalist background" }]
       }
@@ -259,22 +252,15 @@ export const generatePPTSlides = async (
 ): Promise<PresentationSlide[]> => {
   try {
     const ai = await getAiClient();
-    // 核心修复 3: 强化 Context，把教学目标传给 PPT 生成
     const prompt = `
       Design an 8-slide PowerPoint outline for Primary School ${subject}.
       Topic: "${topic}"
       Learning Objectives: ${objectives.join(', ')}
-      
-      Requirements:
-      1. Slide 1 must be TITLE layout.
-      2. Last slide must be CONCLUSION layout.
-      3. Other slides: CONTENT or TWO_COLUMN.
-      4. "visualPrompt": Write a specific, simple English prompt for an AI image generator to create a background for this slide (e.g. "cute cartoon math numbers vector art").
-      5. Content language: Chinese.
+      Requirements: 1. Slide 1 TITLE, Last CONCLUSION. "visualPrompt" for AI image gen. Language: Chinese.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: MODEL_NAME,
       contents: prompt,
       config: { 
         responseMimeType: "application/json",
@@ -294,19 +280,15 @@ export const generateQuiz = async (
 ): Promise<QuizQuestion[]> => {
   try {
     const ai = await getAiClient();
-    // 核心修复 3: 强化 Context
     const prompt = `
       Topic: ${topic}
-      Key Concepts to Cover: ${keyPoints.join(', ')}
-      
-      Task: Generate 10 quiz questions for primary school students.
-      Distribution: 3 Easy (基础), 4 Medium (进阶), 3 Hard (挑战).
-      Format: Multiple choice (4 options).
-      Language: Chinese.
+      Key Concepts: ${keyPoints.join(', ')}
+      Task: Generate 10 quiz questions (3 Easy, 4 Medium, 3 Hard).
+      Format: JSON. Language: Chinese.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: MODEL_NAME,
       contents: prompt,
       config: { 
         responseMimeType: "application/json",
