@@ -515,7 +515,10 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
                {currentView === ViewState.LESSON_PREP && '智能备课中心 (Aliyun Qwen-Max)'}
                {currentView === ViewState.ANALYSIS && 'AI 学情诊断 (Streaming)'}
-               {currentView !== ViewState.LESSON_PREP && currentView !== ViewState.ANALYSIS && '教务管理系统'}
+               {currentView === ViewState.HOMEWORK && '智能作业批改'}
+               {currentView === ViewState.STUDENTS && '学生档案管理'}
+               {currentView === ViewState.PUBLISH && '作业发布中心'}
+               {currentView === ViewState.DASHBOARD && '教务管理系统'}
             </h1>
          </header>
 
@@ -533,11 +536,61 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                       </div>
                       <div className="flex-1 min-h-0 bg-white/5 border border-white/10 rounded-[2rem] p-6 overflow-hidden flex flex-col">
                           <h3 className="font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-400"/> 考试归档</h3>
-                          <div className="overflow-y-auto custom-scrollbar space-y-3">
+                          <div className="overflow-y-auto custom-scrollbar space-y-3 pr-2">
                               {exams.map(exam => (
-                                  <div key={exam.id} onClick={() => setSelectedExamId(exam.id)} className={`p-4 rounded-xl border cursor-pointer ${selectedExamId===exam.id?'bg-blue-600/20 border-blue-500/30':'bg-white/5 border-white/5'}`}>
-                                      <p className="font-bold text-sm text-white">{exam.title}</p>
-                                      <p className="text-xs text-slate-400">{exam.date} • Avg: {exam.averageScore}</p>
+                                  <div 
+                                     key={exam.id} 
+                                     onClick={() => setSelectedExamId(selectedExamId === exam.id ? '' : exam.id)} 
+                                     className={`p-4 rounded-xl border cursor-pointer transition-all duration-300 ${selectedExamId===exam.id?'bg-blue-600/10 border-blue-500/30 shadow-lg shadow-blue-900/20':'bg-white/5 border-white/5 hover:bg-white/10'}`}
+                                  >
+                                      <div className="flex justify-between items-center">
+                                          <div>
+                                              <p className={`font-bold text-sm ${selectedExamId===exam.id ? 'text-blue-300' : 'text-white'}`}>{exam.title}</p>
+                                              <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                                                 <span>{exam.date}</span>
+                                                 <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                                                 <span>平均分: {exam.averageScore}</span>
+                                              </p>
+                                          </div>
+                                          <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${selectedExamId === exam.id ? 'rotate-90 text-blue-400' : ''}`} />
+                                      </div>
+                                      
+                                      {/* Expanded Details Dropdown */}
+                                      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${selectedExamId === exam.id ? 'grid-rows-[1fr] opacity-100 mt-4 pt-4 border-t border-white/5' : 'grid-rows-[0fr] opacity-0 border-none'}`}>
+                                         <div className="overflow-hidden">
+                                            {exam.details ? (
+                                                 <div className="space-y-2">
+                                                     <div className="flex justify-between items-center px-2 mb-2">
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">学生名单</span>
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">总分</span>
+                                                     </div>
+                                                     <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                                                         {exam.details.students.map((stu, idx) => (
+                                                             <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-black/20 hover:bg-black/30 transition-colors">
+                                                                 <div className="flex flex-col">
+                                                                    <span className="text-xs font-bold text-slate-300">{stu.name}</span>
+                                                                    {/* Show top 2 subjects scores */}
+                                                                    <div className="flex gap-1 mt-0.5">
+                                                                       {Object.entries(stu.scores).slice(0,3).map(([sub, score]) => (
+                                                                          <span key={sub} className="text-[9px] text-slate-500">{sub[0]}:{score}</span>
+                                                                       ))}
+                                                                    </div>
+                                                                 </div>
+                                                                 <span className={`text-xs font-mono font-bold ${stu.total >= (exam.details?.subjects.length || 1) * 90 ? 'text-green-400' : stu.total < (exam.details?.subjects.length || 1) * 60 ? 'text-red-400' : 'text-blue-400'}`}>
+                                                                     {stu.total}
+                                                                 </span>
+                                                             </div>
+                                                         ))}
+                                                     </div>
+                                                 </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center py-4 text-slate-500 gap-2">
+                                                    <AlertCircle className="w-5 h-5 opacity-50" />
+                                                    <span className="text-xs italic">该考试暂无详细录入数据</span>
+                                                </div>
+                                            )}
+                                         </div>
+                                      </div>
                                   </div>
                               ))}
                           </div>
@@ -703,7 +756,178 @@ const Dashboard: React.FC<DashboardProps> = ({ teacher, onLogout, onUpdateTeache
                </div>
             )}
             
-            {/* ... Other Views ... */}
+            {/* HOMEWORK VIEW */}
+            {currentView === ViewState.HOMEWORK && (
+                <div className="flex flex-col h-full gap-6 animate-in fade-in">
+                    <div className="flex gap-4 mb-2">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-1">
+                            <h3 className="text-slate-400 text-xs font-bold uppercase mb-1">待批改</h3>
+                            <p className="text-3xl font-black text-orange-400">{homeworkList.filter(h => h.status === 'pending').length}</p>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-1">
+                            <h3 className="text-slate-400 text-xs font-bold uppercase mb-1">已批改</h3>
+                            <p className="text-3xl font-black text-green-400">{homeworkList.filter(h => h.status === 'graded').length}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
+                        {homeworkList.map(hw => {
+                            const student = students.find(s => s.id === hw.studentId);
+                            const isExpanded = expandedHomeworkId === hw.id;
+                            return (
+                                <div key={hw.id} className={`bg-white/5 border rounded-2xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500/50 bg-white/10' : 'border-white/10 hover:bg-white/10'}`}>
+                                    <div 
+                                        className="p-6 flex items-center justify-between cursor-pointer"
+                                        onClick={() => setExpandedHomeworkId(isExpanded ? null : hw.id)}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-3 h-3 rounded-full ${hw.status === 'graded' ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-orange-500 shadow-[0_0_10px_#f97316] animate-pulse'}`}></div>
+                                            <img src={student?.avatar} className="w-10 h-10 rounded-full bg-slate-800" />
+                                            <div>
+                                                <h3 className="font-bold text-white">{student?.name} <span className="text-slate-500 text-sm font-normal">提交了</span> {hw.title}</h3>
+                                                <p className="text-xs text-slate-400">{hw.submittedAt}</p>
+                                            </div>
+                                        </div>
+                                        {hw.status === 'graded' ? (
+                                            <div className="text-right">
+                                                <span className="text-3xl font-black text-green-400">{hw.score}</span>
+                                                <span className="text-xs font-bold text-slate-500 block">分</span>
+                                            </div>
+                                        ) : (
+                                            <span className="px-3 py-1 bg-orange-500/20 text-orange-300 text-xs font-bold rounded-full border border-orange-500/20">待批改</span>
+                                        )}
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="p-6 pt-0 border-t border-white/5 grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-top-2">
+                                            <div className="bg-black/20 rounded-xl p-4">
+                                                <h4 className="text-xs font-bold text-slate-500 mb-3 uppercase">作业内容</h4>
+                                                <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{hw.content}</p>
+                                                {hw.imageUrl && (
+                                                    <img src={hw.imageUrl} className="mt-4 rounded-lg w-full object-cover border border-white/10" />
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col gap-4">
+                                                {hw.status === 'graded' ? (
+                                                    <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                                                        <h4 className="font-bold text-green-400 mb-2 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> 批改完成</h4>
+                                                        <p className="text-slate-300 text-sm mb-2">{hw.feedback}</p>
+                                                        <div className="p-2 bg-black/20 rounded text-xs text-slate-400 font-mono">AI 分析: {hw.aiAnalysis}</div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex-1 flex flex-col justify-center items-center p-8 border-2 border-dashed border-white/10 rounded-xl">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleAIGrading(hw); }}
+                                                            disabled={gradingLoading}
+                                                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg hover:shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50"
+                                                        >
+                                                            {gradingLoading ? <Loader2 className="animate-spin"/> : <Sparkles />} 
+                                                            AI 智能批改
+                                                        </button>
+                                                        <p className="text-xs text-slate-500 mt-4 text-center">AI 将根据作业内容自动评分、生成评语并分析知识点掌握情况。</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* STUDENTS VIEW */}
+            {currentView === ViewState.STUDENTS && (
+                <div className="h-full flex flex-col gap-6 animate-in fade-in">
+                    <div className="flex gap-4 bg-white/5 p-4 rounded-[2rem] border border-white/10">
+                        <input 
+                            type="text" 
+                            placeholder="输入姓名添加学生..." 
+                            value={newStudentName}
+                            onChange={e => setNewStudentName(e.target.value)}
+                            className="flex-1 bg-transparent border-none outline-none text-white font-bold px-4"
+                        />
+                        <button onClick={handleAddStudent} disabled={addingStudent || !newStudentName} className="px-6 py-3 bg-green-600 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-green-500 transition-colors disabled:opacity-50">
+                            {addingStudent ? <Loader2 className="animate-spin w-4 h-4"/> : <UserPlus className="w-4 h-4"/>} 添加
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                        {students.map(student => (
+                            <div key={student.id} className="bg-white/5 border border-white/10 p-6 rounded-[2rem] flex items-center gap-4 group hover:border-blue-500/30 transition-all">
+                                <img src={student.avatar} className="w-16 h-16 rounded-2xl bg-slate-800 object-cover" />
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-bold text-white text-lg truncate">{student.name}</h3>
+                                    <p className="text-xs text-slate-400">{student.className}</p>
+                                    <div className="flex gap-1 mt-2">
+                                        {student.recentScores.slice(-3).map((s,i) => (
+                                            <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${s>=90?'bg-green-500/20 text-green-400':s<60?'bg-red-500/20 text-red-400':'bg-blue-500/20 text-blue-400'}`}>{s}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={() => handleDeleteStudent(student.id)} className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* PUBLISH VIEW */}
+            {currentView === ViewState.PUBLISH && (
+                <div className="h-full flex flex-col justify-center max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] shadow-2xl">
+                        <h2 className="text-2xl font-black text-white mb-8 flex items-center gap-3"><SendHorizontal className="w-6 h-6 text-blue-400"/> 发布新作业</h2>
+                        
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 mb-2 ml-1">作业标题</label>
+                                <input type="text" value={assignTitle} onChange={e=>setAssignTitle(e.target.value)} placeholder="例如：第三单元课后练习" className="w-full p-4 bg-black/20 border border-white/10 rounded-2xl text-white font-bold focus:border-blue-500 focus:outline-none focus:bg-black/40 transition-all" />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 mb-2 ml-1">详细要求</label>
+                                <textarea value={assignDesc} onChange={e=>setAssignDesc(e.target.value)} placeholder="请输入具体的作业内容或要求..." rows={4} className="w-full p-4 bg-black/20 border border-white/10 rounded-2xl text-white font-medium focus:border-blue-500 focus:outline-none focus:bg-black/40 transition-all"></textarea>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 mb-2 ml-1">附件 (PDF/图片)</label>
+                                <div className={`border-2 border-dashed rounded-2xl p-6 transition-colors ${uploadingFile ? 'border-blue-500/50 bg-blue-500/5' : 'border-white/10 hover:border-white/30 hover:bg-white/5'}`}>
+                                    <input type="file" onChange={handleFileUpload} disabled={uploadingFile} className="hidden" id="assignFile" />
+                                    <label htmlFor="assignFile" className="flex flex-col items-center justify-center cursor-pointer">
+                                        {uploadingFile ? (
+                                            <div className="text-center">
+                                                <Loader2 className="w-6 h-6 text-blue-400 animate-spin mx-auto mb-2" />
+                                                <p className="text-xs font-bold text-blue-300">上传中... {fileProgress ? Math.round(fileProgress.percent)+'%' : ''}</p>
+                                            </div>
+                                        ) : assignFile ? (
+                                            <div className="flex items-center gap-2 text-green-400">
+                                                <CheckCircle className="w-6 h-6" />
+                                                <span className="font-bold">附件已上传</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <CloudUpload className="w-8 h-8 text-slate-500 mb-2" />
+                                                <span className="text-xs font-bold text-slate-500">点击上传附件</span>
+                                            </>
+                                        )}
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handlePublishAssignment} 
+                                disabled={publishing || !assignTitle}
+                                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-blue-900/40 hover:shadow-blue-900/60 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {publishing ? <Loader2 className="animate-spin"/> : <SendHorizontal />} 确认发布
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
          </main>
       </div>
